@@ -72,6 +72,17 @@ export default function AdminStato() {
             </div>
           </div>
 
+          {/* Consumi AI */}
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '12px' }}>
+              Consumi AI (Regolo.ai)
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+              <StatCard label="Token Totali" value={stato.consolidato_ai.totale_tokens.toLocaleString('it')} icon={Database} color="var(--gold)" />
+              <StatCard label="Costo Stimato" value={`$ ${stato.consolidato_ai.costo_stimato.toFixed(2)}`} icon={HardDrive} color="var(--green)" />
+            </div>
+          </div>
+
           {/* Disco */}
           <div>
             <h3 style={{ fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '12px' }}>

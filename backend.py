@@ -33,6 +33,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Inizializza la tabella dei consumi se non esiste
+@app.on_event("startup")
+async def init_db():
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS consumi_ai (
+                id SERIAL PRIMARY KEY,
+                utente_id INTEGER,
+                modello VARCHAR(50),
+                prompt_tokens INTEGER,
+                completion_tokens INTEGER,
+                totale_tokens INTEGER,
+                costo_stimato NUMERIC(10, 6),
+                creato_il TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Errore inizializzazione DB consumi: {e}")
+
 DB_CONFIG = {
     "host": "localhost",
     "database": "docdb",
@@ -150,13 +173,31 @@ def get_embedding(testo: str):
     response = client.embeddings.create(input=testo[:8000], model=EMBED_MODEL)
     return response.data[0].embedding
 
-def chiama_llm(messages: list) -> str:
+def chiama_llm(messages: list, utente_id: int) -> str:
     for model in LLM_MODELS:
         try:
             risposta = client.chat.completions.create(
                 model=model, messages=messages, max_tokens=1000
             )
-            return risposta.choices[0].message.content
+            content = risposta.choices[0].message.content
+            usage   = risposta.usage
+            
+            # Registra i consumi nel database
+            try:
+                # Prezzo stimato: $0.20 per milione di token (stima conservativa per modelli Regolo)
+                costo = round((usage.total_tokens / 1000000) * 0.20, 6)
+                conn = get_db()
+                cur  = conn.cursor()
+                cur.execute("""
+                    INSERT INTO consumi_ai (utente_id, modello, prompt_tokens, completion_tokens, totale_tokens, costo_stimato)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (utente_id, model, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, costo))
+                cur.close()
+                conn.close()
+            except Exception as e:
+                print(f"Errore log consumi: {e}")
+                
+            return content
         except Exception as e:
             print(f"Modello {model} non disponibile: {e}")
             continue
@@ -275,7 +316,7 @@ async def cerca(
     testo_risposta = chiama_llm([
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": f"Documenti:\n{contesto}\n\nDomanda: {domanda.testo}"}
-    ])
+    ], int(utente["sub"]))
 
     log_azione(int(utente["sub"]), "ricerca", request.client.host, domanda.testo[:200])
 
@@ -562,13 +603,16 @@ async def stato_server(admin: dict = Depends(richiede_admin)):
     except Exception:
         servizi["postgresql"] = False
         
-    # 2. Verifica Nginx (Controllo tramite systemctl con gestione errori)
+    # 2. Verifica Nginx (Controllo tramite pgrep - più affidabile di systemctl)
     try:
-        result = subprocess.run(
-            ["systemctl", "is-active", "nginx"],
-            capture_output=True, text=True, timeout=2
-        )
-        servizi["nginx"] = result.stdout.strip() == "active"
+        # Se pgrep trova nginx, il processo è attivo
+        result = subprocess.run(["pgrep", "nginx"], capture_output=True, text=True)
+        servizi["nginx"] = result.returncode == 0
+        
+        # Fallback nel caso in cui pgrep non sia installato o fallisca
+        if not servizi["nginx"]:
+            result2 = subprocess.run(["systemctl", "is-active", "nginx"], capture_output=True, text=True)
+            servizi["nginx"] = result2.stdout.strip() == "active"
     except Exception:
         servizi["nginx"] = False
         
@@ -585,12 +629,18 @@ async def stato_server(admin: dict = Depends(richiede_admin)):
         tot_utenti = cur.fetchone()[0]
         cur.execute("SELECT COUNT(*) FROM log_accessi WHERE creato_il > NOW() - INTERVAL '24 hours'")
         ricerche_oggi = cur.fetchone()[0]
+        
+        # Consumi AI
+        cur.execute("SELECT SUM(totale_tokens) FROM consumi_ai")
+        tot_tokens = cur.fetchone()[0] or 0
+        cur.execute("SELECT SUM(costo_stimato) FROM consumi_ai")
+        tot_costo = float(cur.fetchone()[0] or 0.0)
+        
         cur.close()
         conn.close()
     except Exception:
-        tot_documenti = 0
-        tot_utenti = 0
-        ricerche_oggi = 0
+        tot_documenti, tot_utenti, ricerche_oggi = 0, 0, 0
+        tot_tokens, tot_costo = 0, 0.0
 
     # Spazio disco
     try:
@@ -610,6 +660,10 @@ async def stato_server(admin: dict = Depends(richiede_admin)):
             "documenti": tot_documenti,
             "utenti_attivi": tot_utenti,
             "ricerche_oggi": ricerche_oggi
+        },
+        "consolidato_ai": {
+            "totale_tokens": tot_tokens,
+            "costo_stimato": round(tot_costo, 2)
         },
         "disco": disco
     }
