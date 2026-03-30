@@ -74,7 +74,7 @@ export default function Layout({ children }) {
         <div style={{ padding: '0 8px 24px', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
           <div style={{ borderRadius: '10px', overflow: 'hidden', marginBottom: '12px', maxHeight: '120px' }}>
             <img 
-              src="/lanterna.png" 
+              src="/origene.jpg" 
               alt="Archivio Storico" 
               style={{ width: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block', opacity: 0.9 }}
             />

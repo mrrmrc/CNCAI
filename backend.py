@@ -125,6 +125,17 @@ def check_rate_limit(ip: str):
     if len(rate_data[ip]) >= RATE_LIMIT:
         raise HTTPException(status_code=429, detail="Troppe richieste. Riprova tra poco.")
     rate_data[ip].append(now)
+    
+def chunk_text(text: str, size: int = 2000, overlap: int = 400) -> List[str]:
+    if not text: return []
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + size
+        chunks.append(text[start:end])
+        start += (size - overlap)
+        if start >= len(text): break
+    return chunks
 
 def crea_token(utente_id: int, username: str, ruolo: str) -> str:
     payload = {
@@ -335,45 +346,101 @@ async def cerca(
 
     try:
         categorie = domanda.categorie or []
+        
+        # Trasforma embedding in stringa per pgvector [v1, v2, ...]
+        emb_str = "[" + ",".join(map(str, embedding)) + "]"
+        
+        # 1. RICERCA VETTORIALE (Somiglianza concettuale) sui SINGOLI CHUNK
         if categorie:
             placeholders = ', '.join(['%s'] * len(categorie))
-            cur.execute("""
-                SELECT d.id, d.nome_file, d.testo, d.file_originale,
+            query = f"""
+                SELECT e.id AS chunk_id, d.id AS doc_id, d.nome_file, e.chunk_testo, d.file_originale,
                        1 - (e.embedding <=> %s::vector) AS similarita
                 FROM embeddings e
                 JOIN documenti d ON d.id = e.documento_id
                 WHERE d.categoria IN ({placeholders})
                 ORDER BY e.embedding <=> %s::vector
-                LIMIT 10
-            """, tuple([embedding] + list(categorie) + [embedding]))
+                LIMIT 8
+            """
+            cur.execute(query, tuple([emb_str] + list(categorie) + [emb_str]))
         else:
             cur.execute("""
-                SELECT d.id, d.nome_file, d.testo, d.file_originale,
+                SELECT e.id AS chunk_id, d.id AS doc_id, d.nome_file, e.chunk_testo, d.file_originale,
                        1 - (e.embedding <=> %s::vector) AS similarita
                 FROM embeddings e
                 JOIN documenti d ON d.id = e.documento_id
                 ORDER BY e.embedding <=> %s::vector
-                LIMIT 10
-            """, (embedding, embedding))
+                LIMIT 8
+            """, (emb_str, emb_str))
+
+        v_docs = cur.fetchall()
+
+        # 2. RICERCA TESTUALE ESATTA (Sui SINGOLI CHUNK)
+        q_testo = "%" + domanda.testo.strip() + "%"
+        if categorie:
+            query_t = f"""
+                SELECT e.id AS chunk_id, d.id AS doc_id, d.nome_file, e.chunk_testo, d.file_originale, 0.95 AS similarita
+                FROM embeddings e
+                JOIN documenti d ON d.id = e.documento_id
+                WHERE d.categoria IN ({placeholders}) AND e.chunk_testo ILIKE %s
+                LIMIT 4
+            """
+            cur.execute(query_t, tuple(list(categorie) + [q_testo]))
+        else:
+            cur.execute("""
+                SELECT e.id AS chunk_id, d.id AS doc_id, d.nome_file, e.chunk_testo, d.file_originale, 0.95 AS similarita
+                FROM embeddings e
+                JOIN documenti d ON d.id = e.documento_id
+                WHERE e.chunk_testo ILIKE %s
+                LIMIT 4
+            """, (q_testo,))
+            
+        t_docs = cur.fetchall()
+        
     except Exception as e:
         print(f"ERRORE SQL cerca: {e}")
         cur.close(); conn.close()
         raise HTTPException(status_code=500, detail=f"Errore database: {str(e)}")
 
-    docs = cur.fetchall()
     cur.close()
     conn.close()
 
-    contesto = ""
-    fonti    = []
-    for doc_id, nome, testo, originale, sim in docs:
-        contesto += f"\n=== DOCUMENTO: {nome} ===\n{testo[:3000]}\n"
-        fonti.append({
-            "id": doc_id,
-            "nome": nome,
-            "file_originale": originale,
-            "similarita": round(sim, 3)
-        })
+    # Unisci e deduplica i CHUNK (deduplicati per chunk_id, il contesto tiene i frammenti multipli)
+    chunks_unici = {}
+    for chunk in t_docs + v_docs:
+        chunk_id = chunk[0]
+        if chunk_id not in chunks_unici:
+            chunks_unici[chunk_id] = chunk
+
+    # Ordina per similarità decrescente (similarita è l'ultimo campo)
+    chunks = sorted(list(chunks_unici.values()), key=lambda x: x[-1], reverse=True)
+    
+    if not chunks:
+        return {"risposta": "Non ho trovato frammenti rilevanti nei documenti per questa ricerca.", "fonti": []}
+    
+    contesto_lista = []
+    fonti_apparse  = set()
+    fonti = []
+    
+    # Costruiamo il contesto per l'LLM usando i frammenti precisi
+    # Ogni riga: chunk_id, doc_id, nome, chunk_testo, originale, similarita
+    for row in chunks[:12]:
+        chunk_id, doc_id, nome, testo_chunk, originale, sim = row
+        testo_pulito = str(testo_chunk) if testo_chunk else ""
+        
+        contesto_lista.append(f"=== FRAMMENTO TRATTO DAL DOCUMENTO: {nome} ===\n{testo_pulito}\n")
+        
+        # Fonti uniche per la UI — usiamo il doc_id corretto per i link
+        if nome not in fonti_apparse:
+            fonti_apparse.add(nome)
+            fonti.append({
+                "id": doc_id,   # ← ID del DOCUMENTO, non del chunk
+                "nome": nome,
+                "file_originale": originale,
+                "similarita": round(sim, 3)
+            })
+
+    contesto = "\n\n".join(contesto_lista)
 
     system_prompt = get_system_prompt()
     testo_risposta = chiama_llm([
@@ -654,8 +721,10 @@ async def upload_documento(
     if not testo or not testo.strip():
         testo = f"[{file.filename} - nessun testo estratto]"
 
-    # Crea embedding e salva nel DB sempre
-    embedding = get_embedding(testo[:8000])
+    # Crea chunks per il RAG (2000 caratteri con overlap)
+    chunks = chunk_text(testo)
+    if not chunks:
+        chunks = [testo]
 
     conn = get_db()
     cur  = conn.cursor()
@@ -665,16 +734,20 @@ async def upload_documento(
     )
     doc_id = cur.fetchone()[0]
 
-    cur.execute(
-        "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
-        (doc_id, testo[:500], embedding)
-    )
+    # Salva ogni chunk con il suo embedding
+    for c_text in chunks:
+        emb = get_embedding(c_text)
+        cur.execute(
+            "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
+            (doc_id, c_text, emb)
+        )
+        
     cur.close()
     conn.close()
 
     tmp_path.unlink(missing_ok=True)
 
-    return {"messaggio": f"Documento '{file.filename}' caricato con successo"}
+    return {"messaggio": f"Documento '{file.filename}' caricato e indicizzato in {len(chunks)} frammenti."}
 
 @app.delete("/admin/documenti/{doc_id}")
 async def elimina_documento(doc_id: int, admin: dict = Depends(richiede_admin)):

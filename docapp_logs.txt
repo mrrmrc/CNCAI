@@ -1,0 +1,60 @@
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "GET /sitecore/login/default.aspx HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /sitecore/admin/stats.aspx HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /sitecore/admin/unlock_admin.aspx HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /sitecore/shell/Applications/shell.xml HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /sitecore/admin/ShowConfig.aspx HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /App_Config/Security/Domains.config.xml HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5615 - "HEAD /App_Config/Security/GlobalRoles.config.xml HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5619 - "HEAD /sitecore%20modules/staging/service/api.asmx HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5619 - "HEAD /sitecore%20modules/staging/workdir HTTP/1.1" 404 Not Found
+Mar 30 17:41:55 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5619 - "HEAD /sitecore/system/Settings/Security/Profiles HTTP/1.1" 404 Not Found
+Mar 30 17:45:22 ubuntu uvicorn[624656]: WARNING:  Invalid HTTP request received.
+Mar 30 17:46:35 ubuntu uvicorn[624656]: INFO:     127.0.0.1:33940 - "GET /auth/me HTTP/1.0" 200 OK
+Mar 30 17:46:35 ubuntu uvicorn[624656]: INFO:     127.0.0.1:33942 - "GET /categorie HTTP/1.0" 200 OK
+Mar 30 17:48:48 ubuntu uvicorn[624656]: ERRORE SQL cerca: not all arguments converted during string formatting
+Mar 30 17:48:48 ubuntu uvicorn[624656]: INFO:     127.0.0.1:54144 - "POST /cerca HTTP/1.0" 500 Internal Server Error
+Mar 30 17:48:57 ubuntu uvicorn[624656]: WARNING:  Invalid HTTP request received.
+Mar 30 17:49:27 ubuntu uvicorn[624656]: INFO:     127.0.0.1:46946 - "GET /admin/utenti HTTP/1.0" 200 OK
+Mar 30 17:49:41 ubuntu uvicorn[624656]: INFO:     127.0.0.1:43324 - "POST /auth/login HTTP/1.0" 401 Unauthorized
+Mar 30 17:49:44 ubuntu uvicorn[624656]: INFO:     127.0.0.1:43326 - "POST /auth/login HTTP/1.0" 200 OK
+Mar 30 17:49:45 ubuntu uvicorn[624656]: INFO:     127.0.0.1:43332 - "GET /categorie HTTP/1.0" 200 OK
+Mar 30 17:49:51 ubuntu uvicorn[624656]: INFO:     127.0.0.1:59028 - "GET /categorie HTTP/1.0" 200 OK
+Mar 30 17:49:56 ubuntu uvicorn[624656]: INFO:     127.0.0.1:59044 - "GET /categorie HTTP/1.0" 200 OK
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5249 - "POST / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5239 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5246 - "GET http%3A//www.google.com HTTP/1.0" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5250 - "GET /robots.txt HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5257 - "GET / HTTP/1.1" 200 OK
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5252 - "GET /nmaplowercheck1774885851 HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5263 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5267 - "HEAD http%3A//www.google.com HTTP/1.0" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5266 - "GET /HNAP1 HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5270 - "GET / HTTP/1.1" 200 OK
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5274 - "PROPFIND / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5284 - "OPTIONS / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5286 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5287 - "CONNECT www.google.com%3A80 HTTP/1.0" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5293 - "GET / HTTP/1.0" 200 OK
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5292 - "XOHL / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5301 - "OPTIONS / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5306 - "GET /.git/HEAD HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5298 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5309 - "GET /evox/about HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5312 - "HEAD / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5315 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5320 - "PROPFIND / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5324 - "POST /sdk HTTP/1.1" 404 Not Found
+Mar 30 17:50:51 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5322 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5326 - "PROPFIND / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5331 - "POST / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5329 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5338 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5337 - "OPTIONS / HTTP/1.1" 405 Method Not Allowed
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5343 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:50:52 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5348 - "OPTIONS / HTTP/1.1" 400 Bad Request
+Mar 30 17:51:21 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5417 - "GET / HTTP/1.0" 200 OK
+Mar 30 17:51:21 ubuntu uvicorn[624656]: INFO:     5.88.237.123:5427 - "GET / HTTP/1.1" 200 OK
+Mar 30 17:59:14 ubuntu uvicorn[624656]: INFO:     127.0.0.1:48438 - "GET /auth/me HTTP/1.0" 200 OK
+Mar 30 17:59:14 ubuntu uvicorn[624656]: INFO:     127.0.0.1:48442 - "GET /categorie HTTP/1.0" 200 OK
+Mar 30 17:59:16 ubuntu uvicorn[624656]: INFO:     127.0.0.1:48454 - "GET /auth/me HTTP/1.0" 200 OK
+Mar 30 17:59:16 ubuntu uvicorn[624656]: INFO:     127.0.0.1:48468 - "GET /categorie HTTP/1.0" 200 OK
