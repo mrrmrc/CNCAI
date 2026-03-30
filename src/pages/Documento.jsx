@@ -66,14 +66,14 @@ export default function Documento() {
       )}
 
       {/* Testo documento */}
-      <div className="card" style={{ padding: '40px', background: 'white', color: '#1a1a1a', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '19px', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
+      <div className="card" style={{ padding: '40px', background: 'white', color: '#000000', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #ddd' }}>
+        <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '19px', fontWeight: '500', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
           {parole.length > 0 ? (
             <Highlighter
               searchWords={parole}
               autoEscape={true}
               textToHighlight={doc.testo || ''}
-              highlightStyle={{ background: '#fff3cd', color: '#856404', borderRadius: '2px', padding: '0 2px', borderBottom: '1px solid #ffeeba' }}
+              highlightStyle={{ background: '#fff3cd', color: '#000', borderRadius: '2px', padding: '0 2px', borderBottom: '1px solid #ffeeba', fontWeight: '700' }}
             />
           ) : (
             doc.testo

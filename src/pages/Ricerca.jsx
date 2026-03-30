@@ -24,10 +24,49 @@ export default function Ricerca() {
     }
   }
 
-  const scaricaOriginale = (id) => {
-    const token = localStorage.getItem('token')
-    window.open(`${api.defaults.baseURL}/originale/${id}?token=${token}`, '_blank')
-  }
+  const renderRispostaConLink = (testo, fonti) => {
+    if (!fonti || fonti.length === 0) return testo;
+    
+    // Ordiniamo le fonti per lunghezza del nome decrescente per evitare match parziali errati
+    const fontiOrdinate = [...fonti].sort((a, b) => b.nome.length - a.nome.length);
+    let parti = [testo];
+    
+    fontiOrdinate.forEach(fonte => {
+      const nomeSenzaExt = fonte.nome.replace('.txt', '');
+      const nuoveParti = [];
+      
+      parti.forEach(parte => {
+        if (typeof parte !== 'string') {
+          nuoveParti.push(parte);
+          return;
+        }
+        
+        const chunks = parte.split(nomeSenzaExt);
+        chunks.forEach((chunk, i) => {
+          nuoveParti.push(chunk);
+          if (i < chunks.length - 1) {
+            nuoveParti.push(
+              <span 
+                key={`${fonte.id}-${i}`}
+                onClick={() => navigate(`/documento/${fonte.id}`, { state: { query: domanda } })}
+                style={{ 
+                  color: '#0056b3', 
+                  textDecoration: 'underline', 
+                  cursor: 'pointer', 
+                  fontWeight: '700' 
+                }}
+              >
+                {nomeSenzaExt}
+              </span>
+            );
+          }
+        });
+      });
+      parti = nuoveParti;
+    });
+    
+    return parti;
+  };
 
   return (
     <div>
@@ -75,14 +114,16 @@ export default function Ricerca() {
       {risultato && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Risposta AI */}
-          <div className="card" style={{ background: 'white', color: '#1a1a1a', padding: '32px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--gold)' }} />
-              <span style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#666' }}>
+          <div className="card" style={{ background: 'white', color: '#000000', padding: '40px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #ddd' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--gold)' }} />
+              <span style={{ fontSize: '13px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555' }}>
                 Risposta AI
               </span>
             </div>
-            <p style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '17px', fontFamily: "'Cormorant Garamond', serif" }}>{risultato.risposta}</p>
+            <div style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '18px', fontWeight: '500', fontFamily: "'Cormorant Garamond', serif" }}>
+              {renderRispostaConLink(risultato.risposta, risultato.fonti)}
+            </div>
           </div>
 
           {/* Fonti */}
@@ -96,7 +137,7 @@ export default function Ricerca() {
                   <div key={i} className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <FileText size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: '500', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {fonte.nome.replace('.txt', '')}
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
