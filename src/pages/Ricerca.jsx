@@ -75,14 +75,14 @@ export default function Ricerca() {
       {risultato && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Risposta AI */}
-          <div className="card">
+          <div className="card" style={{ background: 'white', color: '#1a1a1a', padding: '32px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--gold)' }} />
-              <span style={{ fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)' }}>
+              <span style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#666' }}>
                 Risposta AI
               </span>
             </div>
-            <p style={{ lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>{risultato.risposta}</p>
+            <p style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '17px', fontFamily: "'Cormorant Garamond', serif" }}>{risultato.risposta}</p>
           </div>
 
           {/* Fonti */}
