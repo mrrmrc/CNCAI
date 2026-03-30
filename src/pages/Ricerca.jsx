@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, FileText, Download, ExternalLink } from 'lucide-react'
 import Highlighter from 'react-highlight-words'
+import DocumentoModal from '../components/DocumentoModal'
 import api from '../api'
 
 export default function Ricerca() {
@@ -9,14 +10,29 @@ export default function Ricerca() {
   const [risultato, setRisultato] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [modalDocId, setModalDocId] = useState(null)
+  const [categorieDisponibili, setCategorieDisponibili] = useState([])
+  const [selectedCats, setSelectedCats] = useState([])
+  const [showFilters, setShowFilters] = useState(false)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    api.get('/categorie').then(r => setCategorieDisponibili(r.data)).catch(console.error)
+  }, [])
+
+  const toggleCategory = (cat) => {
+    if (selectedCats.includes(cat)) setSelectedCats(selectedCats.filter(c => c !== cat))
+    else setSelectedCats([...selectedCats, cat])
+  }
 
   const cerca = async (e) => {
     e.preventDefault()
     if (!domanda.trim()) return
     setError(''); setLoading(true); setRisultato(null)
     try {
-      const r = await api.post('/cerca', { testo: domanda })
+      const payload = { testo: domanda }
+      if (selectedCats.length > 0) payload.categorie = selectedCats
+      const r = await api.post('/cerca', payload)
       setRisultato(r.data)
     } catch {
       setError('Errore durante la ricerca. Riprova.')
@@ -25,8 +41,20 @@ export default function Ricerca() {
     }
   }
 
-  const scaricaOriginale = (id) => {
-    window.open(`${api.defaults.baseURL}/originale/${id}`, '_blank')
+  const scaricaOriginale = async (id, nome) => {
+    try {
+      const { data } = await api.get(`/originale/${id}`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', nome || `documento_${id}`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (e) {
+      console.error("Errore download", e)
+      alert("Impossibile scaricare l'originale. Potrebbe non essere disponibile.")
+    }
   }
 
   const renderRispostaConLink = (testo, fonti) => {
@@ -64,7 +92,7 @@ export default function Ricerca() {
             nuoveParti.push(
               <span 
                 key={`${fonte.id}-${i}`}
-                onClick={() => navigate(`/documento/${fonte.id}`, { state: { query: domanda } })}
+                onClick={() => setModalDocId(fonte.id)}
                 style={{ 
                   color: '#0056b3', 
                   textDecoration: 'underline', 
@@ -107,7 +135,7 @@ export default function Ricerca() {
       </div>
 
       {/* Form ricerca */}
-      <form onSubmit={cerca} style={{ display: 'flex', gap: '12px', marginBottom: '32px' }}>
+      <form onSubmit={cerca} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
         <div style={{ flex: 1, position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
           <input
@@ -121,9 +149,34 @@ export default function Ricerca() {
         <button type="submit" className="btn-primary" disabled={loading || !domanda.trim()}
           style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           {loading ? <span className="spinner" style={{ width: '16px', height: '16px' }} /> : <Search size={16} />}
-          {loading ? 'Ricerca...' : 'Cerca'}
+          {loading ? 'Ricerca...' : `Cerca ${selectedCats.length > 0 ? '(' + selectedCats.length + ')' : ''}`}
         </button>
       </form>
+
+      {/* Filtri Categoria */}
+      {categorieDisponibili.length > 0 && (
+        <div style={{ marginBottom: '32px' }}>
+          <button type="button" onClick={() => setShowFilters(!showFilters)} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '13px', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+            {showFilters ? 'Nascondi Filtri di Esclusione' : 'Escludi/Includi Categorie Fonti ▾'}
+          </button>
+          {showFilters && (
+            <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px', background: 'var(--bg2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '13px', color: 'var(--text3)', width: '100%', marginBottom: '4px' }}>Se non selezioni nulla, l'AI cercherà in tutti gli Archivi RAG liberamente. Se selezioni, ignorerà il resto.</span>
+              {categorieDisponibili.map(cat => (
+                <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', background: selectedCats.includes(cat) ? 'var(--gold)' : 'var(--bg3)', color: selectedCats.includes(cat) ? '#000' : 'var(--text)', padding: '6px 14px', borderRadius: '16px', border: '1px solid var(--border)', transition: '0.2s', fontWeight: selectedCats.includes(cat) ? 'bold' : 'normal' }}>
+                  <input type="checkbox" checked={selectedCats.includes(cat)} onChange={() => toggleCategory(cat)} style={{ display: 'none' }} />
+                  {cat}
+                </label>
+              ))}
+              {selectedCats.length > 0 && (
+                <button type="button" onClick={() => setSelectedCats([])} style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '12px', cursor: 'pointer', marginLeft: 'auto', alignSelf: 'center', textDecoration: 'underline' }}>
+                  Azzera Filtri
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
@@ -150,7 +203,7 @@ export default function Ricerca() {
                 Risposta AI
               </span>
             </div>
-            <div style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '18px', fontWeight: '500', fontFamily: "'Cormorant Garamond', serif" }}>
+            <div style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '1.3em', fontWeight: '700', fontFamily: "'Cormorant Garamond', serif", color: '#000000' }}>
               {renderRispostaConLink(risultato.risposta, risultato.fonti)}
             </div>
           </div>
@@ -176,7 +229,7 @@ export default function Ricerca() {
                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                       <button
                         className="btn-secondary btn-sm"
-                        onClick={() => navigate(`/documento/${fonte.id}`, { state: { query: domanda } })}
+                        onClick={() => setModalDocId(fonte.id)}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
                         <ExternalLink size={13} /> Vedi
@@ -184,7 +237,7 @@ export default function Ricerca() {
                       {fonte.file_originale && (
                         <button
                           className="btn-secondary btn-sm"
-                          onClick={() => scaricaOriginale(fonte.id)}
+                          onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
                           style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                         >
                           <Download size={13} /> Originale
@@ -197,6 +250,15 @@ export default function Ricerca() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal / Popup Documento */}
+      {modalDocId && (
+        <DocumentoModal
+          id={modalDocId}
+          query={domanda}
+          onClose={() => setModalDocId(null)}
+        />
       )}
 
       {/* Placeholder iniziale */}

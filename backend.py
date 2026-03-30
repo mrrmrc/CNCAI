@@ -3,14 +3,14 @@ backend.py - FastAPI Archivio Cammino Neocatecumenale
 Versione completa con autenticazione JWT, gestione utenti,
 documenti, admin panel, backup, log accessi.
 """
-from fastapi import FastAPI, HTTPException, Header, Request, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Header, Request, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import psycopg2
 import psycopg2.extras
 from openai import OpenAI
@@ -19,6 +19,16 @@ import jwt
 import os
 import subprocess
 import shutil
+
+# Estrazione testo da file
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
 
 # ════════════════════════════════════════════════════════
 # CONFIGURAZIONE
@@ -165,12 +175,40 @@ def get_system_prompt() -> str:
         row = cur.fetchone()
         cur.close()
         conn.close()
-        return row[0] if row else "Sei un assistente AI al servizio del Cammino Neocatecumenale."
+        return row[0] if row else _default_prompt()
     except Exception:
-        return "Sei un assistente AI al servizio del Cammino Neocatecumenale."
+        return _default_prompt()
 
-def get_embedding(testo: str):
+def _default_prompt() -> str:
+    return """Sei un assistente AI esperto dell'archivio storico del Cammino Neocatecumenale.
+Hai accesso a migliaia di documenti storici, decreti, lettere e comunicazioni.
+
+Il tuo compito è:
+1. Analizzare attentamente TUTTI i documenti forniti nel contesto
+2. Rispondere in modo completo e dettagliato alla domanda dell'utente
+3. Sintetizzare le informazioni trovate in più documenti
+4. Citare il nome dei documenti fonte quando menzioni informazioni specifiche
+5. Se un argomento è trattato INDIRETTAMENTE nei documenti, menzionalo comunque
+6. Rispondere sempre in italiano, in modo professionale e chiaro
+7. Se le informazioni disponibili sono parziali, fornisci ciò che è presente e segnala cosa manca"""
+
+def get_embedding(testo: str, utente_id: int = 1):
     response = client.embeddings.create(input=testo[:8000], model=EMBED_MODEL)
+    if hasattr(response, 'usage') and response.usage:
+        usage = response.usage
+        # Prezzo stimato embedding regolo.ai (es. 0.10$ / 1M token)
+        costo = round((usage.total_tokens / 1000000) * 0.10, 6)
+        try:
+            conn = get_db()
+            cur  = conn.cursor()
+            cur.execute("""
+                INSERT INTO consumi_ai (utente_id, modello, prompt_tokens, completion_tokens, totale_tokens, costo_stimato)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (utente_id, EMBED_MODEL, usage.prompt_tokens, 0, usage.total_tokens, costo))
+            cur.close()
+            conn.close()
+        except:
+            pass
     return response.data[0].embedding
 
 def chiama_llm(messages: list, utente_id: int) -> str:
@@ -214,16 +252,21 @@ class LoginRequest(BaseModel):
 
 class Domanda(BaseModel):
     testo: str
+    categorie: Optional[List[str]] = None
 
 class NuovoUtente(BaseModel):
     username: str
     password: str
     ruolo: str = "user"
+    email: Optional[str] = None
+    note: Optional[str] = None
 
 class ModificaUtente(BaseModel):
     password: Optional[str] = None
     ruolo: Optional[str] = None
     attivo: Optional[bool] = None
+    email: Optional[str] = None
+    note: Optional[str] = None
 
 class ConfigAI(BaseModel):
     system_prompt: str
@@ -243,14 +286,14 @@ async def login(dati: LoginRequest, request: Request):
     conn.close()
 
     if not utente:
-        raise HTTPException(status_code=401, detail="Credenziali non valide")
+        raise HTTPException(status_code=401, detail="Username non trovato o utente disabilitato")
 
     password_ok = bcrypt.checkpw(
         dati.password.encode(),
         utente["password"].encode()
     )
     if not password_ok:
-        raise HTTPException(status_code=401, detail="Credenziali non valide")
+        raise HTTPException(status_code=401, detail="Password errata")
 
     # Aggiorna ultimo accesso
     conn2 = get_db()
@@ -289,14 +332,34 @@ async def cerca(
 
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute("""
-        SELECT d.id, d.nome_file, d.testo, d.file_originale,
-               1 - (e.embedding <=> %s::vector) AS similarita
-        FROM embeddings e
-        JOIN documenti d ON d.id = e.documento_id
-        ORDER BY e.embedding <=> %s::vector
-        LIMIT 5
-    """, (embedding, embedding))
+
+    try:
+        categorie = domanda.categorie or []
+        if categorie:
+            placeholders = ', '.join(['%s'] * len(categorie))
+            cur.execute("""
+                SELECT d.id, d.nome_file, d.testo, d.file_originale,
+                       1 - (e.embedding <=> %s::vector) AS similarita
+                FROM embeddings e
+                JOIN documenti d ON d.id = e.documento_id
+                WHERE d.categoria IN ({placeholders})
+                ORDER BY e.embedding <=> %s::vector
+                LIMIT 10
+            """, tuple([embedding] + list(categorie) + [embedding]))
+        else:
+            cur.execute("""
+                SELECT d.id, d.nome_file, d.testo, d.file_originale,
+                       1 - (e.embedding <=> %s::vector) AS similarita
+                FROM embeddings e
+                JOIN documenti d ON d.id = e.documento_id
+                ORDER BY e.embedding <=> %s::vector
+                LIMIT 10
+            """, (embedding, embedding))
+    except Exception as e:
+        print(f"ERRORE SQL cerca: {e}")
+        cur.close(); conn.close()
+        raise HTTPException(status_code=500, detail=f"Errore database: {str(e)}")
+
     docs = cur.fetchall()
     cur.close()
     conn.close()
@@ -304,7 +367,7 @@ async def cerca(
     contesto = ""
     fonti    = []
     for doc_id, nome, testo, originale, sim in docs:
-        contesto += f"\n--- {nome} ---\n{testo[:1000]}\n"
+        contesto += f"\n=== DOCUMENTO: {nome} ===\n{testo[:3000]}\n"
         fonti.append({
             "id": doc_id,
             "nome": nome,
@@ -315,7 +378,7 @@ async def cerca(
     system_prompt = get_system_prompt()
     testo_risposta = chiama_llm([
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Documenti:\n{contesto}\n\nDomanda: {domanda.testo}"}
+        {"role": "user", "content": f"Documenti dell'archivio:\n{contesto}\n\nDomanda: {domanda.testo}\n\nRispondi in modo esaustivo basandoti sui documenti forniti. Cita i nomi dei documenti rilevanti."}
     ], int(utente["sub"]))
 
     log_azione(int(utente["sub"]), "ricerca", request.client.host, domanda.testo[:200])
@@ -331,36 +394,40 @@ async def cerca(
 async def lista_documenti(
     pagina: int = 1,
     per_pagina: int = 50,
-    cerca: str = None,
+    cerca: Optional[str] = None,
+    categoria: Optional[str] = None,
     utente: dict = Depends(get_utente_corrente)
 ):
     offset = (pagina - 1) * per_pagina
     conn   = get_db()
     cur    = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    conditions = []
+    params_q   = []
+
     if cerca:
-        cur.execute("""
-            SELECT id, nome_file, file_originale, creato_il,
-                   LEFT(testo, 200) AS anteprima
-            FROM documenti
-            WHERE testo ILIKE %s OR nome_file ILIKE %s
-            ORDER BY nome_file
-            LIMIT %s OFFSET %s
-        """, (f"%{cerca}%", f"%{cerca}%", per_pagina, offset))
-    else:
-        cur.execute("""
-            SELECT id, nome_file, file_originale, creato_il,
-                   LEFT(testo, 200) AS anteprima
-            FROM documenti
-            ORDER BY nome_file
-            LIMIT %s OFFSET %s
-        """, (per_pagina, offset))
+        conditions.append("(testo ILIKE %s OR nome_file ILIKE %s)")
+        params_q.extend([f"%{cerca}%", f"%{cerca}%"])
 
-    documenti = cur.fetchall()
+    if categoria:
+        conditions.append("categoria = %s")
+        params_q.append(categoria)
 
-    cur.execute("SELECT COUNT(*) FROM documenti")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    cur.execute(f"SELECT COUNT(*) FROM documenti {where}", params_q)
     totale = cur.fetchone()["count"]
 
+    cur.execute(f"""
+        SELECT id, nome_file, file_originale, creato_il, categoria,
+               LEFT(testo, 200) AS anteprima
+        FROM documenti
+        {where}
+        ORDER BY nome_file
+        LIMIT %s OFFSET %s
+    """, params_q + [per_pagina, offset])
+
+    documenti = cur.fetchall()
     cur.close()
     conn.close()
 
@@ -413,6 +480,22 @@ async def scarica_originale(
         media_type="application/octet-stream"
     )
 
+@app.get("/categorie")
+async def lista_categorie(utente: dict = Depends(get_utente_corrente)):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("""
+        SELECT categoria, COUNT(*) as totale
+        FROM documenti
+        WHERE categoria IS NOT NULL
+        GROUP BY categoria
+        ORDER BY categoria
+    """)
+    cats = [{ "nome": row[0], "totale": row[1] } for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return cats
+
 
 # ════════════════════════════════════════════════════════
 # ADMIN — UTENTI
@@ -422,7 +505,7 @@ async def scarica_originale(
 async def lista_utenti(admin: dict = Depends(richiede_admin)):
     conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT id, username, ruolo, attivo, creato_il, ultimo_accesso FROM utenti ORDER BY creato_il DESC")
+    cur.execute("SELECT id, username, email, note, ruolo, attivo, creato_il, ultimo_accesso FROM utenti ORDER BY creato_il DESC")
     utenti = cur.fetchall()
     cur.close()
     conn.close()
@@ -439,8 +522,8 @@ async def crea_utente(dati: NuovoUtente, admin: dict = Depends(richiede_admin)):
     cur  = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO utenti (username, password, ruolo) VALUES (%s, %s, %s) RETURNING id",
-            (dati.username, hash_pw, dati.ruolo)
+            "INSERT INTO utenti (username, password, ruolo, email, note) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+            (dati.username, hash_pw, dati.ruolo, dati.email, dati.note)
         )
         nuovo_id = cur.fetchone()[0]
     except psycopg2.IntegrityError:
@@ -470,6 +553,12 @@ async def modifica_utente(
     if dati.attivo is not None:
         cur.execute("UPDATE utenti SET attivo = %s WHERE id = %s", (dati.attivo, utente_id))
 
+    if dati.email is not None:
+        cur.execute("UPDATE utenti SET email = %s WHERE id = %s", (dati.email, utente_id))
+
+    if dati.note is not None:
+        cur.execute("UPDATE utenti SET note = %s WHERE id = %s", (dati.note, utente_id))
+
     cur.close()
     conn.close()
     return {"messaggio": "Utente aggiornato"}
@@ -493,6 +582,7 @@ async def elimina_utente(utente_id: int, admin: dict = Depends(richiede_admin)):
 @app.post("/admin/upload")
 async def upload_documento(
     file: UploadFile = File(...),
+    categoria: str = Form("Generale"),
     admin: dict = Depends(richiede_admin)
 ):
     estensioni_ok = [".pdf", ".docx", ".doc", ".txt", ".jpg", ".jpeg", ".png", ".tif", ".tiff"]
@@ -509,35 +599,99 @@ async def upload_documento(
     dest_originale = ORIGINALI_DIR / file.filename
     shutil.copy2(tmp_path, dest_originale)
 
-    # Estrai testo
+    # Estrai testo reale dal file
     testo = ""
     if ext == ".txt":
         testo = tmp_path.read_text(encoding="utf-8", errors="ignore")
-    else:
-        # Per altri formati — da implementare con Tesseract/pypdf
-        testo = f"[File originale: {file.filename}. Testo da estrarre.]"
 
-    if testo.strip():
-        embedding = get_embedding(testo[:8000])
+    elif ext == ".pdf":
+        if PdfReader:
+            try:
+                reader = PdfReader(str(tmp_path))
+                pagine_testo = []
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        pagine_testo.append(t.strip())
+                testo = "\n\n".join(pagine_testo)
+            except Exception as e:
+                print(f"Errore estrazione PDF: {e}")
+                testo = f"[PDF: {file.filename} - Errore estrazione: {e}]"
+        else:
+            testo = f"[PDF: {file.filename} - pypdf non disponibile]"
 
-        conn = get_db()
-        cur  = conn.cursor()
-        cur.execute(
-            "INSERT INTO documenti (nome_file, testo, file_originale) VALUES (%s, %s, %s) RETURNING id",
-            (file.filename, testo, str(dest_originale))
-        )
-        doc_id = cur.fetchone()[0]
+    elif ext in [".docx"]:
+        if DocxDocument:
+            try:
+                doc = DocxDocument(str(tmp_path))
+                testo = "\n\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+            except Exception as e:
+                testo = f"[DOCX: {file.filename} - Errore: {e}]"
+        else:
+            testo = f"[DOCX: {file.filename} - python-docx non disponibile]"
 
-        cur.execute(
-            "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
-            (doc_id, testo[:500], embedding)
-        )
-        cur.close()
-        conn.close()
+    elif ext in [".doc"]:
+        # Prova conversione con antiword o catdoc se disponibile
+        try:
+            result = subprocess.run(["catdoc", str(tmp_path)], capture_output=True, text=True, timeout=30)
+            testo = result.stdout
+        except Exception:
+            testo = f"[DOC: {file.filename} - conversione non disponibile]"
+
+    elif ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
+        # OCR con tesseract se disponibile
+        try:
+            result = subprocess.run(
+                ["tesseract", str(tmp_path), "stdout", "-l", "ita+eng"],
+                capture_output=True, text=True, timeout=60
+            )
+            testo = result.stdout
+            if not testo.strip():
+                testo = f"[Immagine: {file.filename} - OCR non ha estratto testo]"
+        except Exception as e:
+            testo = f"[Immagine: {file.filename} - OCR non disponibile: {e}]"
+
+    if not testo or not testo.strip():
+        testo = f"[{file.filename} - nessun testo estratto]"
+
+    # Crea embedding e salva nel DB sempre
+    embedding = get_embedding(testo[:8000])
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute(
+        "INSERT INTO documenti (nome_file, testo, file_originale, categoria) VALUES (%s, %s, %s, %s) RETURNING id",
+        (file.filename, testo, str(dest_originale), categoria)
+    )
+    doc_id = cur.fetchone()[0]
+
+    cur.execute(
+        "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
+        (doc_id, testo[:500], embedding)
+    )
+    cur.close()
+    conn.close()
 
     tmp_path.unlink(missing_ok=True)
 
     return {"messaggio": f"Documento '{file.filename}' caricato con successo"}
+
+@app.delete("/admin/documenti/{doc_id}")
+async def elimina_documento(doc_id: int, admin: dict = Depends(richiede_admin)):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("SELECT file_originale FROM documenti WHERE id = %s", (doc_id,))
+    row = cur.fetchone()
+    if row and row[0]:
+        try:
+            Path(row[0]).unlink(missing_ok=True)
+        except Exception:
+            pass
+    cur.execute("DELETE FROM embeddings WHERE documento_id = %s", (doc_id,))
+    cur.execute("DELETE FROM documenti WHERE id = %s", (doc_id,))
+    cur.close()
+    conn.close()
+    return {"messaggio": "Documento eliminato"}
 
 
 # ════════════════════════════════════════════════════════
@@ -569,18 +723,31 @@ async def update_config_ai(config: ConfigAI, admin: dict = Depends(richiede_admi
 async def get_log(
     pagina: int = 1,
     per_pagina: int = 100,
+    utente_filtro: Optional[int] = None,
     admin: dict = Depends(richiede_admin)
 ):
     offset = (pagina - 1) * per_pagina
     conn   = get_db()
     cur    = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT l.id, u.username, l.azione, l.ip, l.dettagli, l.creato_il
-        FROM log_accessi l
-        LEFT JOIN utenti u ON u.id = l.utente_id
-        ORDER BY l.creato_il DESC
-        LIMIT %s OFFSET %s
-    """, (per_pagina, offset))
+
+    if utente_filtro:
+        cur.execute("""
+            SELECT l.id, u.username, l.azione, l.ip, l.dettagli, l.creato_il
+            FROM log_accessi l
+            LEFT JOIN utenti u ON u.id = l.utente_id
+            WHERE l.utente_id = %s
+            ORDER BY l.creato_il DESC
+            LIMIT %s OFFSET %s
+        """, (utente_filtro, per_pagina, offset))
+    else:
+        cur.execute("""
+            SELECT l.id, u.username, l.azione, l.ip, l.dettagli, l.creato_il
+            FROM log_accessi l
+            LEFT JOIN utenti u ON u.id = l.utente_id
+            ORDER BY l.creato_il DESC
+            LIMIT %s OFFSET %s
+        """, (per_pagina, offset))
+
     logs = cur.fetchall()
     cur.close()
     conn.close()

@@ -1,0 +1,1 @@
+ALTER TABLE utenti ADD COLUMN IF NOT EXISTS email VARCHAR(200); ALTER TABLE utenti ADD COLUMN IF NOT EXISTS note TEXT; SELECT column_name FROM information_schema.columns WHERE table_name='utenti' ORDER BY column_name;

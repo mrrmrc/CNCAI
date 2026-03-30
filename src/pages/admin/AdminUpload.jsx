@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Upload, File, CheckCircle, XCircle } from 'lucide-react'
 import api from '../../api'
 
@@ -6,7 +6,13 @@ export default function AdminUpload() {
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [risultati, setRisultati] = useState([])
+  const [categoria, setCategoria] = useState('')
+  const [categorieEsistenti, setCategorieEsistenti] = useState([])
   const inputRef = useRef()
+
+  useEffect(() => {
+    api.get('/categorie').then(r => setCategorieEsistenti(r.data)).catch(console.error)
+  }, [])
 
   const handleDrop = (e) => {
     e.preventDefault()
@@ -24,6 +30,7 @@ export default function AdminUpload() {
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
+      fd.append('categoria', categoria)
       try {
         const r = await api.post('/admin/upload', fd)
         res.push({ nome: file.name, ok: true, msg: r.data.messaggio })
@@ -41,7 +48,40 @@ export default function AdminUpload() {
   return (
     <div>
       <h2 style={{ fontSize: '32px', marginBottom: '8px' }}>Carica Documenti</h2>
-      <p style={{ color: 'var(--text2)', marginBottom: '32px' }}>Formati supportati: {FORMATI}</p>
+      <p style={{ color: 'var(--text2)', marginBottom: '24px' }}>Formati supportati: {FORMATI}</p>
+
+      <div style={{ marginBottom: '24px' }}>
+        <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text2)' }}>
+          📁 Categoria / Archivio di appartenenza *
+        </label>
+        <input 
+          type="text" 
+          value={categoria} 
+          onChange={e => setCategoria(e.target.value)} 
+          list="categorie-list"
+          placeholder="es: Documenti Padre Mario, Lettere, Catechismo..."
+          style={{ width: '100%', maxWidth: '480px' }}
+          required
+        />
+        <datalist id="categorie-list">
+          {categorieEsistenti.map(c => (
+            <option key={c.nome} value={c.nome}>{c.nome} ({c.totale} documenti)</option>
+          ))}
+        </datalist>
+        <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '6px' }}>
+          ↳ Scrivi il nome di una categoria esistente (l'autocompletamento ti suggerisce) oppure digita una nuova per crearla.
+        </p>
+        {categorieEsistenti.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+            {categorieEsistenti.map(c => (
+              <button key={c.nome} type="button" onClick={() => setCategoria(c.nome)}
+                style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', border: '1px solid var(--border)', background: categoria === c.nome ? 'var(--gold)' : 'var(--bg3)', color: categoria === c.nome ? '#000' : 'var(--text)', cursor: 'pointer', transition: '0.2s' }}>
+                {c.nome}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Drop zone */}
       <div
