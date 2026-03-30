@@ -52,7 +52,7 @@ export default function Layout({ children }) {
             <button
               onClick={() => setZoomLevel(l => Math.max(1, l - 1))}
               disabled={zoomLevel === 1}
-              style={{ width: '32px', height: '32px', padding: 0, fontSize: '16px', fontWeight: 'bold', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '6px', cursor: zoomLevel === 1 ? 'not-allowed' : 'pointer', opacity: zoomLevel === 1 ? 0.4 : 1 }}
+              style={{ width: '32px', height: '32px', padding: 0, fontSize: '16px', fontWeight: 'bold', background: 'var(--bg3)', color: '#ffffff', border: '1px solid var(--border)', borderRadius: '6px', cursor: zoomLevel === 1 ? 'not-allowed' : 'pointer', opacity: zoomLevel === 1 ? 0.4 : 1 }}
             >A-</button>
             <div style={{ flex: 1, display: 'flex', gap: '3px', justifyContent: 'center' }}>
               {[1,2,3,4,5].map(l => (
@@ -62,7 +62,7 @@ export default function Layout({ children }) {
             <button
               onClick={() => setZoomLevel(l => Math.min(5, l + 1))}
               disabled={zoomLevel === 5}
-              style={{ width: '32px', height: '32px', padding: 0, fontSize: '14px', fontWeight: 'bold', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: '6px', cursor: zoomLevel === 5 ? 'not-allowed' : 'pointer', opacity: zoomLevel === 5 ? 0.4 : 1 }}
+              style={{ width: '32px', height: '32px', padding: 0, fontSize: '14px', fontWeight: 'bold', background: 'var(--bg3)', color: '#ffffff', border: '1px solid var(--border)', borderRadius: '6px', cursor: zoomLevel === 5 ? 'not-allowed' : 'pointer', opacity: zoomLevel === 5 ? 0.4 : 1 }}
             >A+</button>
             <button title="Alto Contrasto" onClick={() => setHighContrast(!highContrast)}
               style={{ width: '32px', height: '32px', padding: 0, fontSize: '14px', background: highContrast ? 'var(--gold)' : 'var(--bg3)', color: highContrast ? '#000' : 'var(--text)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer' }}>◑</button>

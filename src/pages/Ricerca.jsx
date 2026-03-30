@@ -17,12 +17,19 @@ export default function Ricerca() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/categorie').then(r => setCategorieDisponibili(r.data)).catch(console.error)
+    api.get('/categorie')
+      .then(r => {
+        const data = Array.isArray(r.data) ? r.data : []
+        setCategorieDisponibili(data)
+        // Di default seleziona tutte le categorie
+        setSelectedCats(data.map(c => c.nome))
+      })
+      .catch(console.error)
   }, [])
 
-  const toggleCategory = (cat) => {
-    if (selectedCats.includes(cat)) setSelectedCats(selectedCats.filter(c => c !== cat))
-    else setSelectedCats([...selectedCats, cat])
+  const toggleCategory = (nome) => {
+    if (selectedCats.includes(nome)) setSelectedCats(selectedCats.filter(c => c !== nome))
+    else setSelectedCats([...selectedCats, nome])
   }
 
   const cerca = async (e) => {
@@ -156,25 +163,21 @@ export default function Ricerca() {
       {/* Filtri Categoria */}
       {categorieDisponibili.length > 0 && (
         <div style={{ marginBottom: '32px' }}>
-          <button type="button" onClick={() => setShowFilters(!showFilters)} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '13px', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
-            {showFilters ? 'Nascondi Filtri di Esclusione' : 'Escludi/Includi Categorie Fonti ▾'}
-          </button>
-          {showFilters && (
-            <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px', background: 'var(--bg2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '13px', color: 'var(--text3)', width: '100%', marginBottom: '4px' }}>Se non selezioni nulla, l'AI cercherà in tutti gli Archivi RAG liberamente. Se selezioni, ignorerà il resto.</span>
-              {categorieDisponibili.map(cat => (
-                <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', background: selectedCats.includes(cat) ? 'var(--gold)' : 'var(--bg3)', color: selectedCats.includes(cat) ? '#000' : 'var(--text)', padding: '6px 14px', borderRadius: '16px', border: '1px solid var(--border)', transition: '0.2s', fontWeight: selectedCats.includes(cat) ? 'bold' : 'normal' }}>
-                  <input type="checkbox" checked={selectedCats.includes(cat)} onChange={() => toggleCategory(cat)} style={{ display: 'none' }} />
-                  {cat}
-                </label>
-              ))}
-              {selectedCats.length > 0 && (
-                <button type="button" onClick={() => setSelectedCats([])} style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '12px', cursor: 'pointer', marginLeft: 'auto', alignSelf: 'center', textDecoration: 'underline' }}>
-                  Azzera Filtri
-                </button>
-              )}
-            </div>
-          )}
+          <div style={{ fontSize: '13px', color: 'var(--gold)', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fonti di Ricerca Attive:</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px', background: 'var(--bg2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text3)', width: '100%', marginBottom: '4px' }}>L'AI cercherà le risposte solo all'interno delle categorie selezionate qui sotto.</span>
+            {categorieDisponibili.map(cat => (
+              <label key={cat.nome} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', background: selectedCats.includes(cat.nome) ? 'var(--gold)' : 'var(--bg3)', color: selectedCats.includes(cat.nome) ? '#000' : 'var(--text)', padding: '6px 14px', borderRadius: '16px', border: '1px solid var(--border)', transition: '0.2s', fontWeight: selectedCats.includes(cat.nome) ? 'bold' : 'normal' }}>
+                <input type="checkbox" checked={selectedCats.includes(cat.nome)} onChange={() => toggleCategory(cat.nome)} style={{ display: 'none' }} />
+                {cat.nome} <span style={{ fontSize: '10px', opacity: 0.7 }}>({cat.totale})</span>
+              </label>
+            ))}
+            {selectedCats.length < categorieDisponibili.length && (
+              <button type="button" onClick={() => setSelectedCats(categorieDisponibili.map(c => c.nome))} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '12px', cursor: 'pointer', marginLeft: 'auto', alignSelf: 'center', textDecoration: 'underline' }}>
+                Seleziona Tutte
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -196,16 +199,29 @@ export default function Ricerca() {
       {risultato && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Risposta AI */}
-          <div className="card" style={{ background: 'white', color: '#000000', padding: '40px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', border: '1px solid #ddd' }}>
+          <div className="card" style={{ background: 'var(--bg2)', padding: '32px', border: '1px solid var(--gold)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
               <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--gold)' }} />
-              <span style={{ fontSize: '13px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#555' }}>
+              <span style={{ fontSize: '13px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--gold)' }}>
                 Risposta AI
               </span>
             </div>
-            <div style={{ lineHeight: '1.9', whiteSpace: 'pre-wrap', fontSize: '1.3em', fontWeight: '700', fontFamily: "'Cormorant Garamond', serif", color: '#000000' }}>
+            <div style={{ lineHeight: '1.8', whiteSpace: 'pre-wrap', fontSize: '16px', color: '#ffffff' }}>
               {renderRispostaConLink(risultato.risposta, risultato.fonti)}
             </div>
+            {risultato.fonti?.length > 0 && (
+              <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', fontSize: '13px', color: 'var(--text2)' }}>
+                <strong style={{ color: 'var(--gold)' }}>Documenti consultati dall'AI:</strong>{' '}
+                {risultato.fonti.map((f, i) => (
+                  <span key={i}>
+                    <span onClick={() => setModalDocId(f.id)} style={{ color: 'var(--gold)', textDecoration: 'underline', cursor: 'pointer' }}>
+                      {f.nome.replace('.txt', '')}
+                    </span>
+                    {i < risultato.fonti.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Fonti */}
