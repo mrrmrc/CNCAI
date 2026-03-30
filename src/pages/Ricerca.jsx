@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, FileText, Download, ExternalLink } from 'lucide-react'
+import Highlighter from 'react-highlight-words'
 import api from '../api'
 
 export default function Ricerca() {
@@ -24,8 +25,23 @@ export default function Ricerca() {
     }
   }
 
+  const scaricaOriginale = (id) => {
+    window.open(`${api.defaults.baseURL}/originale/${id}`, '_blank')
+  }
+
   const renderRispostaConLink = (testo, fonti) => {
-    if (!fonti || fonti.length === 0) return testo;
+    const paroleDomanda = domanda.split(/\s+/).filter(p => p.length > 2);
+
+    if (!fonti || fonti.length === 0) {
+      return (
+        <Highlighter
+          searchWords={paroleDomanda}
+          autoEscape={true}
+          textToHighlight={testo}
+          highlightStyle={{ background: 'yellow', color: '#000', fontWeight: 'bold' }}
+        />
+      );
+    }
     
     // Ordiniamo le fonti per lunghezza del nome decrescente per evitare match parziali errati
     const fontiOrdinate = [...fonti].sort((a, b) => b.nome.length - a.nome.length);
@@ -65,7 +81,20 @@ export default function Ricerca() {
       parti = nuoveParti;
     });
     
-    return parti;
+    return parti.map((parte, index) => {
+      if (typeof parte === 'string') {
+        return (
+          <Highlighter
+            key={`highlight-${index}`}
+            searchWords={paroleDomanda}
+            autoEscape={true}
+            textToHighlight={parte}
+            highlightStyle={{ background: 'yellow', color: '#000', fontWeight: 'bold' }}
+          />
+        );
+      }
+      return parte;
+    });
   };
 
   return (

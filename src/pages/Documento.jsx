@@ -73,7 +73,7 @@ export default function Documento() {
               searchWords={parole}
               autoEscape={true}
               textToHighlight={doc.testo || ''}
-              highlightStyle={{ background: '#fff3cd', color: '#000', borderRadius: '2px', padding: '0 2px', borderBottom: '1px solid #ffeeba', fontWeight: '700' }}
+              highlightStyle={{ background: 'yellow', color: '#000', borderRadius: '2px', padding: '0 2px', fontWeight: 'bold' }}
             />
           ) : (
             doc.testo
