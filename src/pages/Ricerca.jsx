@@ -86,17 +86,25 @@ export default function Ricerca() {
 
   const scaricaOriginale = async (id, nome) => {
     try {
-      const { data } = await api.get(`/originale/${id}`, { responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([data]))
+      const { data, headers } = await api.get(`/originale/${id}`, { responseType: 'blob' })
+      const contentType = headers['content-type'] || 'application/octet-stream'
+      const url = window.URL.createObjectURL(new Blob([data], { type: contentType }))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', nome || `documento_${id}`)
+      // Usa il nome_file originale o componi un nome di fallback
+      const nomeFile = nome || `documento_${id}`
+      link.setAttribute('download', nomeFile)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
     } catch (e) {
       console.error("Errore download", e)
-      alert("Impossibile scaricare l'originale. Potrebbe non essere disponibile.")
+      if (e.response?.status === 404) {
+        alert("Questo documento non ha un file allegato né testo disponibile per il download.")
+      } else {
+        alert("Errore durante il download. Riprova.")
+      }
     }
   }
 

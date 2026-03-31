@@ -558,7 +558,7 @@ async def scarica_originale(
 ):
     conn = get_db()
     cur  = conn.cursor()
-    cur.execute("SELECT nome_file, file_originale FROM documenti WHERE id = %s", (doc_id,))
+    cur.execute("SELECT nome_file, file_originale, testo FROM documenti WHERE id = %s", (doc_id,))
     row = cur.fetchone()
     cur.close()
     conn.close()
@@ -566,15 +566,28 @@ async def scarica_originale(
     if not row:
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
-    file_originale = row[1]
-    if not file_originale or not Path(file_originale).exists():
-        raise HTTPException(status_code=404, detail="File originale non disponibile")
+    nome_file, file_originale, testo = row
 
-    return FileResponse(
-        path=file_originale,
-        filename=Path(file_originale).name,
-        media_type="application/octet-stream"
-    )
+    # 1. Se il file originale esiste fisicamente → lo serve
+    if file_originale and Path(file_originale).exists():
+        return FileResponse(
+            path=file_originale,
+            filename=Path(file_originale).name,
+            media_type="application/octet-stream"
+        )
+
+    # 2. Fallback: serve il testo estratto come file .txt scaricabile
+    if testo and testo.strip():
+        from fastapi.responses import Response
+        nome_txt = Path(nome_file).stem + ".txt"
+        return Response(
+            content=testo.encode("utf-8"),
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{nome_txt}"'}
+        )
+
+    # 3. Nessuna risorsa disponibile
+    raise HTTPException(status_code=404, detail="Nessun file disponibile per il download")
 
 @app.get("/categorie")
 async def lista_categorie(utente: dict = Depends(get_utente_corrente)):
