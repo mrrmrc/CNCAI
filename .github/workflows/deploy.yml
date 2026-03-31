@@ -24,6 +24,7 @@ jobs:
       run: npm run build
 
     - name: Deploy to Server via SCP
+      continue-on-error: true
       uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.SSH_HOST }}
@@ -35,6 +36,7 @@ jobs:
         strip_components: 0
 
     - name: Post-deployment commands via SSH
+      continue-on-error: true
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.SSH_HOST }}
