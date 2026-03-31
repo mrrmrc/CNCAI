@@ -991,6 +991,61 @@ async def scarica_backup(nome_file: str, admin: dict = Depends(richiede_admin)):
 
 
 # ════════════════════════════════════════════════════════
+# ADMIN — DEPLOY WEBHOOK
+# Chiamato da Antigravity via HTTPS per fare git pull + restart
+# senza bisogno di SSH diretto al server
+# ════════════════════════════════════════════════════════
+
+DEPLOY_TOKEN = "cncai-deploy-2026-xK9mP2nQ8rL5vT"
+REPO_DIR     = Path("/opt/docapp")
+WEBROOT_DIR  = Path("/var/www/pictosound/ricerca")
+
+@app.post("/admin/deploy")
+async def esegui_deploy(
+    request: Request,
+    admin: dict = Depends(richiede_admin)
+):
+    # Verifica token aggiuntivo nell'header X-Deploy-Token
+    deploy_token = request.headers.get("X-Deploy-Token", "")
+    if deploy_token != DEPLOY_TOKEN:
+        raise HTTPException(status_code=403, detail="Token deploy non valido")
+
+    log_lines = []
+
+    try:
+        # 1. git pull
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            capture_output=True, text=True, cwd=str(REPO_DIR), timeout=60
+        )
+        log_lines.append(f"git pull: {result.stdout.strip() or result.stderr.strip()}")
+
+        # 2. Copia dist nel webroot
+        if WEBROOT_DIR.exists() and (REPO_DIR / "dist").exists():
+            result2 = subprocess.run(
+                ["cp", "-r", str(REPO_DIR / "dist") + "/.", str(WEBROOT_DIR) + "/"],
+                capture_output=True, text=True, timeout=30
+            )
+            log_lines.append(f"copy dist: {'OK' if result2.returncode == 0 else result2.stderr}")
+
+        # 3. Riavvia il backend (docapp)
+        result3 = subprocess.run(
+            ["systemctl", "restart", "docapp"],
+            capture_output=True, text=True, timeout=30
+        )
+        log_lines.append(f"restart docapp: {'OK' if result3.returncode == 0 else result3.stderr}")
+
+        return {
+            "stato": "deploy completato",
+            "timestamp": datetime.now().isoformat(),
+            "log": log_lines
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore deploy: {str(e)}")
+
+
+# ════════════════════════════════════════════════════════
 # ROOT
 # ════════════════════════════════════════════════════════
 
