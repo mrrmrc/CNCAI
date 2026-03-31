@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Search, BookOpen, LogOut, Users, Upload, Settings, Activity, Database, FileText, Home } from 'lucide-react'
+import { Search, BookOpen, LogOut, Users, Upload, Settings, Activity, Database, FileText, Home, Globe } from 'lucide-react'
 
 const navStyle = {
   display: 'flex', alignItems: 'center', gap: '10px',
@@ -101,6 +101,7 @@ export default function Layout({ children }) {
               <NavItem to="/admin/stato" icon={Activity} label="Stato Server" />
               <NavItem to="/admin/log" icon={FileText} label="Log Accessi" />
               <NavItem to="/admin/backup" icon={Database} label="Backup" />
+              <NavItem to="/admin/scraper" icon={Globe} label="Web Scraper" />
             </>
           )}
         </nav>

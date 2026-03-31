@@ -1045,6 +1045,212 @@ async def esegui_deploy(
         raise HTTPException(status_code=500, detail=f"Errore deploy: {str(e)}")
 
 
+
+# ════════════════════════════════════════════════════════
+# ADMIN — SCRAPER WEB
+# ════════════════════════════════════════════════════════
+
+class ScraperRequest(BaseModel):
+    url: str
+    profondita: int = 2
+    max_pagine: int = 100
+
+@app.get("/admin/scraper")
+async def lista_scansioni(admin: dict = Depends(richiede_admin)):
+    """Restituisce lo storico delle scansioni effettuate"""
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS siti_scansionati (
+                id SERIAL PRIMARY KEY,
+                dominio VARCHAR(255),
+                url_radice TEXT,
+                pagine_indicizzate INTEGER DEFAULT 0,
+                errori INTEGER DEFAULT 0,
+                scansionato_il TIMESTAMP DEFAULT NOW(),
+                utente_id INTEGER
+            )
+        """)
+        cur.execute("""
+            SELECT dominio, url_radice, pagine_indicizzate, errori, scansionato_il
+            FROM siti_scansionati
+            ORDER BY scansionato_il DESC
+            LIMIT 50
+        """)
+        rows = cur.fetchall()
+    except Exception as e:
+        rows = []
+    finally:
+        cur.close()
+        conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/admin/scraper")
+async def esegui_scraping(body: ScraperRequest, admin: dict = Depends(richiede_admin)):
+    """Scansiona un sito web e indicizza le pagine come documenti"""
+    try:
+        import requests as req_lib
+        from urllib.parse import urljoin, urlparse
+        from html.parser import HTMLParser
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Libreria 'requests' non disponibile sul server")
+
+    # BeautifulSoup opzionale — fallback parser manuale
+    try:
+        from bs4 import BeautifulSoup
+        use_bs4 = True
+    except ImportError:
+        use_bs4 = False
+
+    url_radice  = body.url.rstrip('/')
+    profondita  = max(1, min(5, body.profondita))
+    max_pagine  = max(1, min(1000, body.max_pagine))
+    dominio     = urlparse(url_radice).netloc
+    log_lines   = []
+    visitati    = set()
+    da_visitare = [(url_radice, 0)]  # (url, livello)
+    pagine_ok   = 0
+    pagine_err  = 0
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; CNCArchive/1.0; +https://www.pictosound.com)",
+        "Accept-Language": "it-IT,it;q=0.9,en;q=0.8"
+    }
+
+    log_lines.append(f"🌐 Inizio scansione: {url_radice}")
+    log_lines.append(f"📐 Profondità: {profondita} | Max pagine: {max_pagine}")
+    log_lines.append(f"🔍 Dominio target: {dominio}")
+    log_lines.append("─" * 50)
+
+    conn = get_db()
+    cur  = conn.cursor()
+
+    # Assicurati che la tabella esista
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS siti_scansionati (
+            id SERIAL PRIMARY KEY,
+            dominio VARCHAR(255),
+            url_radice TEXT,
+            pagine_indicizzate INTEGER DEFAULT 0,
+            errori INTEGER DEFAULT 0,
+            scansionato_il TIMESTAMP DEFAULT NOW(),
+            utente_id INTEGER
+        )
+    """)
+
+    while da_visitare and pagine_ok < max_pagine:
+        url_corrente, livello = da_visitare.pop(0)
+
+        if url_corrente in visitati:
+            continue
+        visitati.add(url_corrente)
+
+        if livello > profondita:
+            continue
+
+        try:
+            resp = req_lib.get(url_corrente, headers=headers, timeout=15, allow_redirects=True)
+            if resp.status_code != 200:
+                log_lines.append(f"⚠ [{resp.status_code}] {url_corrente}")
+                pagine_err += 1
+                continue
+
+            content_type = resp.headers.get('content-type', '')
+            if 'text/html' not in content_type:
+                continue
+
+            html = resp.text
+
+            # Estrai testo e link
+            if use_bs4:
+                soup = BeautifulSoup(html, 'html.parser')
+                # Rimuovi script e stili
+                for tag in soup(['script', 'style', 'nav', 'footer', 'header']):
+                    tag.decompose()
+                testo = soup.get_text(separator='\n', strip=True)
+                titolo = soup.title.string.strip() if soup.title else url_corrente
+                links = [a.get('href') for a in soup.find_all('a', href=True)]
+            else:
+                # Parser manuale minimale
+                import re
+                testo   = re.sub(r'<[^>]+>', ' ', html)
+                testo   = re.sub(r'\s+', ' ', testo).strip()
+                titolo  = re.search(r'<title[^>]*>(.*?)</title>', html, re.I|re.S)
+                titolo  = titolo.group(1).strip() if titolo else url_corrente
+                links   = re.findall(r'href=["\']([^"\']+)["\']', html)
+
+            # Pulisci il testo
+            testo = '\n'.join(l.strip() for l in testo.splitlines() if l.strip())
+            if len(testo) < 100:
+                log_lines.append(f"⏭ Saltata (testo troppo corto): {url_corrente}")
+                continue
+
+            # Limita testo a 50000 caratteri
+            testo = testo[:50000]
+
+            # Nome file documento
+            path_url  = urlparse(url_corrente).path.strip('/').replace('/', '_') or 'homepage'
+            nome_file = f"{dominio}_{path_url}.txt"
+
+            log_lines.append(f"✅ [{pagine_ok+1}] {titolo[:60]} — {url_corrente}")
+
+            # Salva come documento e crea embedding
+            chunks = chunk_text(testo)
+            if not chunks:
+                chunks = [testo]
+
+            cur.execute(
+                "INSERT INTO documenti (nome_file, testo, file_originale, categoria) VALUES (%s, %s, %s, %s) RETURNING id",
+                (nome_file, testo, None, dominio)
+            )
+            doc_id = cur.fetchone()[0]
+
+            for c_text in chunks:
+                try:
+                    emb = get_embedding(c_text, int(admin["sub"]))
+                    cur.execute(
+                        "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
+                        (doc_id, c_text, emb)
+                    )
+                except Exception as emb_err:
+                    log_lines.append(f"  ⚠ Embedding fallito: {str(emb_err)[:60]}")
+
+            pagine_ok += 1
+
+            # Estrai e accoda nuovi link (stesso dominio)
+            if livello < profondita:
+                for href in links:
+                    href_abs = urljoin(url_corrente, href).split('#')[0].split('?')[0]
+                    parsed   = urlparse(href_abs)
+                    if parsed.netloc == dominio and href_abs not in visitati:
+                        da_visitare.append((href_abs, livello + 1))
+
+        except Exception as page_err:
+            log_lines.append(f"❌ Errore su {url_corrente}: {str(page_err)[:80]}")
+            pagine_err += 1
+            continue
+
+    # Salva nel log storico
+    log_lines.append("─" * 50)
+    log_lines.append(f"🏁 Completato: {pagine_ok} pagine indicizzate, {pagine_err} errori")
+
+    cur.execute("""
+        INSERT INTO siti_scansionati (dominio, url_radice, pagine_indicizzate, errori, utente_id)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (dominio, url_radice, pagine_ok, pagine_err, int(admin["sub"])))
+
+    cur.close()
+    conn.close()
+
+    return {
+        "dominio": dominio,
+        "pagine_indicizzate": pagine_ok,
+        "errori": pagine_err,
+        "log": log_lines
+    }
+
+
 # ════════════════════════════════════════════════════════
 # ROOT
 # ════════════════════════════════════════════════════════

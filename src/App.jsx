@@ -11,6 +11,7 @@ import AdminAI from './pages/admin/AdminAI'
 import AdminStato from './pages/admin/AdminStato'
 import AdminLog from './pages/admin/AdminLog'
 import AdminBackup from './pages/admin/AdminBackup'
+import AdminScraper from './pages/admin/AdminScraper'
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { utente, loading } = useAuth()
@@ -35,6 +36,7 @@ function AppRoutes() {
       <Route path="/admin/stato" element={<PrivateRoute adminOnly><AdminStato /></PrivateRoute>} />
       <Route path="/admin/log" element={<PrivateRoute adminOnly><AdminLog /></PrivateRoute>} />
       <Route path="/admin/backup" element={<PrivateRoute adminOnly><AdminBackup /></PrivateRoute>} />
+      <Route path="/admin/scraper" element={<PrivateRoute adminOnly><AdminScraper /></PrivateRoute>} />
       <Route path="*" element={<Navigate to="/ricerca" />} />
     </Routes>
   )
