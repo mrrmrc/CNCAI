@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { Search, BookOpen, LogOut, Users, Upload, Settings, Activity, Database, FileText, Home, Globe } from 'lucide-react'
 
 const navStyle = {
-  display: 'flex', alignItems: 'center', gap: '10px',
-  padding: '10px 16px', borderRadius: '8px', color: '#ffffff',
-  fontSize: '14px', transition: 'all 0.15s', textDecoration: 'none',
+  display: 'flex', alignItems: 'center', gap: '12px',
+  padding: '12px 18px', borderRadius: '8px', color: '#ffffff',
+  fontSize: '16px', transition: 'all 0.15s', textDecoration: 'none',
   fontWeight: '500',
 }
 const activeStyle = { background: 'rgba(201,168,76,0.18)', color: 'var(--gold)', fontWeight: '700' }
@@ -14,7 +14,7 @@ const activeStyle = { background: 'rgba(201,168,76,0.18)', color: 'var(--gold)',
 function NavItem({ to, icon: Icon, label }) {
   return (
     <NavLink to={to} style={({ isActive }) => ({ ...navStyle, ...(isActive ? activeStyle : {}) })}>
-      <Icon size={16} /> {label}
+      <Icon size={18} /> {label}
     </NavLink>
   )
 }
@@ -40,7 +40,7 @@ export default function Layout({ children }) {
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* Sidebar */}
       <aside style={{
-        width: '240px', flexShrink: 0,
+        width: '300px', flexShrink: 0,
         background: 'var(--bg2)', borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', padding: '24px 12px',
         position: 'fixed', top: 0, left: 0, bottom: 0, overflowY: 'auto'
@@ -72,17 +72,17 @@ export default function Layout({ children }) {
 
         {/* Logo + Immagine */}
         <div style={{ padding: '0 8px 24px', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
-          <div style={{ borderRadius: '10px', overflow: 'hidden', marginBottom: '12px', maxHeight: '120px' }}>
+          <div style={{ borderRadius: '10px', overflow: 'hidden', marginBottom: '14px', maxHeight: '160px' }}>
             <img 
               src="/origene.jpg" 
               alt="Archivio Storico" 
               style={{ width: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block', opacity: 0.9 }}
             />
           </div>
-          <h1 style={{ fontSize: '18px', lineHeight: 1.2, color: '#ffffff', fontWeight: '700' }}>
+          <h1 style={{ fontSize: '22px', lineHeight: 1.2, color: '#ffffff', fontWeight: '700' }}>
             Cammino<br/>Neocatecumenale
           </h1>
-          <p style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>Archivio Storico</p>
+          <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '4px' }}>Archivio Storico</p>
         </div>
 
         {/* Nav principale */}
@@ -92,7 +92,7 @@ export default function Layout({ children }) {
 
           {utente?.ruolo === 'admin' && (
             <>
-              <div style={{ margin: '16px 8px 8px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text3)' }}>
+              <div style={{ margin: '16px 8px 8px', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text3)' }}>
                 Amministrazione
               </div>
               <NavItem to="/admin/upload" icon={Upload} label="Carica Documenti" />
@@ -109,7 +109,7 @@ export default function Layout({ children }) {
         {/* Footer utente */}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '16px' }}>
           <div style={{ padding: '0 8px 12px' }}>
-            <div style={{ fontSize: '14px', fontWeight: '500' }}>{utente?.username}</div>
+            <div style={{ fontSize: '15px', fontWeight: '600' }}>{utente?.username}</div>
             <span className={`badge badge-${utente?.ruolo}`}>{utente?.ruolo}</span>
           </div>
           <button onClick={handleLogout} style={{ ...navStyle, width: '100%', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -119,7 +119,7 @@ export default function Layout({ children }) {
       </aside>
 
       {/* Main content */}
-      <main style={{ marginLeft: '240px', flex: 1, padding: '32px', maxWidth: '1200px' }}>
+      <main style={{ marginLeft: '300px', flex: 1, padding: '40px', minWidth: 0 }}>
         {children}
       </main>
     </div>

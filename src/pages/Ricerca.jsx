@@ -1,21 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, FileText, Download, ExternalLink, CheckCircle, XCircle } from 'lucide-react'
+import { Search, FileText, Download, ExternalLink, ChevronDown, Loader } from 'lucide-react'
 import Highlighter from 'react-highlight-words'
 import DocumentoModal from '../components/DocumentoModal'
 import api from '../api'
 
 export default function Ricerca() {
-  const [domanda, setDomanda] = useState('')
-  const [risultato, setRisultato] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [modalDocId, setModalDocId] = useState(null)
+  const [domanda, setDomanda]           = useState('')
+  const [risultato, setRisultato]       = useState(null)
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState('')
+  const [modalDocId, setModalDocId]     = useState(null)
   const [categorieDisponibili, setCategorieDisponibili] = useState([])
   const [selectedCats, setSelectedCats] = useState([])
-  const [showFilters, setShowFilters] = useState(false)
-  const [suggerimento, setSuggerimento] = useState(null)   // testo corretto dall'AI
+  const [suggerimento, setSuggerimento] = useState(null)
   const [checkingSpell, setCheckingSpell] = useState(false)
+  const [paginaAltri, setPaginaAltri]   = useState(1)
+  const [loadingAltri, setLoadingAltri] = useState(false)
   const spellTimerRef = useRef(null)
   const navigate = useNavigate()
 
@@ -30,57 +31,75 @@ export default function Ricerca() {
       .catch(console.error)
   }, [])
 
-  // Debounce: controlla ortografia 1.5s dopo che l'utente smette di digitare
+  // Debounce: controlla ortografia
   useEffect(() => {
     setSuggerimento(null)
+    setCheckingSpell(false)
     if (!domanda || domanda.trim().length < 5) return
-
     if (spellTimerRef.current) clearTimeout(spellTimerRef.current)
-
     spellTimerRef.current = setTimeout(async () => {
+      setCheckingSpell(true)
       try {
-        setCheckingSpell(true)
         const res = await api.post('/correggi', { testo: domanda })
-        if (res.data.modificato && res.data.corretto !== domanda) {
-          setSuggerimento(res.data.corretto)
+        const corretto  = (res.data?.corretto || '').trim()
+        const modificato = res.data?.modificato
+        // Sanity check: ignora se troppo lungo o con a capo (AI ha risposto alla domanda)
+        const tooLong    = corretto.length > domanda.length * 1.8
+        const hasNewline = corretto.includes('\n')
+        const identical  = corretto.toLowerCase() === domanda.toLowerCase().trim()
+        if (modificato && corretto && !tooLong && !hasNewline && !identical) {
+          setSuggerimento(corretto)
         }
       } catch {
-        // Ignora errori silenziosamente (non blocca l'UX)
+        // Backend non disponibile — ignora
       } finally {
         setCheckingSpell(false)
       }
-    }, 500)
-
-    return () => clearTimeout(spellTimerRef.current)
+    }, 800)
+    return () => { clearTimeout(spellTimerRef.current); setCheckingSpell(false) }
   }, [domanda])
 
-  const accettaSuggerimento = () => {
-    setDomanda(suggerimento)
-    setSuggerimento(null)
-  }
-
-  const ignoraSuggerimento = () => {
-    setSuggerimento(null)
-  }
+  const accettaSuggerimento = () => { setDomanda(suggerimento); setSuggerimento(null) }
+  const ignoraSuggerimento  = () => { setSuggerimento(null) }
 
   const toggleCategory = (nome) => {
     if (selectedCats.includes(nome)) setSelectedCats(selectedCats.filter(c => c !== nome))
     else setSelectedCats([...selectedCats, nome])
   }
 
-  const cerca = async (e) => {
-    e.preventDefault()
+  const cerca = async (e, pAltri = 1) => {
+    if (e) e.preventDefault()
     if (!domanda.trim()) return
-    setError(''); setLoading(true); setRisultato(null); setSuggerimento(null)
+
+    if (pAltri === 1) {
+      // nuova ricerca
+      setError(''); setLoading(true); setRisultato(null); setSuggerimento(null); setPaginaAltri(1)
+    } else {
+      // solo caricare altri documenti
+      setLoadingAltri(true)
+    }
+
     try {
-      const payload = { testo: domanda }
+      const payload = { testo: domanda, pagina_altri: pAltri }
       if (selectedCats.length > 0) payload.categorie = selectedCats
       const r = await api.post('/cerca', payload)
-      setRisultato(r.data)
+
+      if (pAltri === 1) {
+        setRisultato(r.data)
+      } else {
+        // Aggiungi gli altri documenti alla lista esistente
+        setRisultato(prev => ({
+          ...prev,
+          altri_documenti: [...(prev.altri_documenti || []), ...(r.data.altri_documenti || [])],
+          altri_pagine_totali: r.data.altri_pagine_totali
+        }))
+        setPaginaAltri(pAltri)
+      }
     } catch {
       setError('Errore durante la ricerca. Riprova.')
     } finally {
       setLoading(false)
+      setLoadingAltri(false)
     }
   }
 
@@ -225,7 +244,7 @@ export default function Ricerca() {
         )}
         {suggerimento && !checkingSpell && (
           <div style={{
-            background: 'rgba(212, 175, 55, 0.08)',
+            background: 'rgba(212,175,55,0.08)',
             border: '1px solid var(--gold)',
             borderRadius: '8px',
             padding: '10px 14px',
@@ -300,6 +319,7 @@ export default function Ricerca() {
       {/* Risultato */}
       {risultato && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
           {/* Risposta AI */}
           <div className="card" style={{ background: 'var(--bg2)', padding: '32px', border: '1px solid var(--gold)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
@@ -326,55 +346,133 @@ export default function Ricerca() {
             )}
           </div>
 
-          {/* Fonti */}
+          {/* Banner totali */}
+          {risultato.totale_trovati > 0 && (
+            <div style={{
+              background: 'rgba(201,168,76,0.1)',
+              border: '1px solid rgba(201,168,76,0.4)',
+              borderRadius: '10px',
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '14px',
+            }}>
+              <span style={{ fontSize: '18px' }}>🔍</span>
+              <span style={{ color: 'var(--text2)' }}>
+                Risposta basata su{' '}
+                <strong style={{ color: 'var(--gold)' }}>{risultato.documenti_usati_ai} documenti</strong>
+                {' '}su{' '}
+                <strong style={{ color: '#fff' }}>{risultato.totale_trovati} trovati</strong>
+                {risultato.altri_documenti?.length > 0 && (
+                  <span style={{ color: 'var(--text3)' }}>
+                    {' '}— altri <strong style={{ color: 'var(--text2)' }}>{risultato.totale_trovati - risultato.documenti_usati_ai}</strong> correlati disponibili qui sotto
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Fonti usate dall'AI */}
           {risultato.fonti?.length > 0 && (
             <div>
-              <h3 style={{ fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '12px' }}>
-                Documenti Fonte ({risultato.fonti.length})
+              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '10px' }}>
+                Documenti usati dall'AI ({risultato.fonti.length})
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {risultato.fonti.map((fonte, i) => (
-                  <div key={i} className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <FileText size={20} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+                  <div key={i} className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <FileText size={18} style={{ color: 'var(--gold)', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: '600', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {fonte.nome.replace('.txt', '')}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '2px' }}>
-                        Rilevanza: {Math.round(fonte.similarita * 100)}%
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                        <span style={{ fontSize: '11px', background: 'rgba(201,168,76,0.15)', color: 'var(--gold)', padding: '2px 8px', borderRadius: '4px', fontWeight: '700' }}>
+                          Raccolta: {fonte.categoria || 'N/D'}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                          Rilevanza: <span style={{ color: '#4ade80', fontWeight: '700' }}>{Math.round(fonte.similarita * 100)}%</span>
+                        </span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => setModalDocId(fonte.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
+                      <button className="btn-secondary btn-sm" onClick={() => setModalDocId(fonte.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <ExternalLink size={13} /> Vedi
                       </button>
-                      {fonte.file_originale ? (
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                          title="Scarica il file originale"
-                        >
-                          <Download size={13} /> Scarica originale
+                      {fonte.file_originale && (
+                        <button className="btn-secondary btn-sm" onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Download size={13} /> Scarica
                         </button>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic', alignSelf: 'center' }}>
-                          Solo testo
-                        </span>
                       )}
                     </div>
-
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Altri documenti correlati */}
+          {risultato.altri_documenti?.length > 0 && (
+            <div>
+              <h3 style={{ fontSize: '13px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '10px' }}>
+                Altri documenti correlati ({risultato.totale_trovati - risultato.documenti_usati_ai} totali)
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {risultato.altri_documenti.map((doc, i) => (
+                  <div key={i} className="card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '14px', opacity: 0.85 }}>
+                    <FileText size={16} style={{ color: 'var(--text3)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: '500', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text2)' }}>
+                        {doc.nome.replace('.txt', '')}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1px' }}>
+                        <span style={{ fontSize: '10px', background: 'var(--bg3)', color: 'var(--text3)', padding: '1px 6px', borderRadius: '3px', fontWeight: '600' }}>
+                          {doc.categoria || 'N/D'}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text3)' }}>
+                          Rilevanza: {Math.round(doc.similarita * 100)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                      <button className="btn-secondary btn-sm" onClick={() => setModalDocId(doc.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                        <ExternalLink size={12} /> Vedi
+                      </button>
+                      {doc.file_originale && (
+                        <button className="btn-secondary btn-sm" onClick={() => scaricaOriginale(doc.id, doc.nome)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                          <Download size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pulsante Carica altri */}
+              {paginaAltri < (risultato.altri_pagine_totali || 1) && (
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                  <button
+                    onClick={() => cerca(null, paginaAltri + 1)}
+                    disabled={loadingAltri}
+                    className="btn-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontSize: '14px' }}
+                  >
+                    {loadingAltri
+                      ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Caricamento...</>
+                      : <><ChevronDown size={14} /> Carica altri 20 documenti</>}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
 
       {/* Modal / Popup Documento */}
       {modalDocId && (

@@ -1,18 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { Upload, File, CheckCircle, XCircle } from 'lucide-react'
 import api from '../../api'
 
 export default function AdminUpload() {
-  const [files, setFiles] = useState([])
+  const [files, setFiles]       = useState([])
   const [uploading, setUploading] = useState(false)
   const [risultati, setRisultati] = useState([])
-  const [categoria, setCategoria] = useState('')
-  const [categorieEsistenti, setCategorieEsistenti] = useState([])
   const inputRef = useRef()
-
-  useEffect(() => {
-    api.get('/categorie').then(r => setCategorieEsistenti(r.data)).catch(console.error)
-  }, [])
 
   const handleDrop = (e) => {
     e.preventDefault()
@@ -30,7 +24,6 @@ export default function AdminUpload() {
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
-      fd.append('categoria', categoria)
       try {
         const r = await api.post('/admin/upload', fd)
         res.push({ nome: file.name, ok: true, msg: r.data.messaggio })
@@ -49,39 +42,6 @@ export default function AdminUpload() {
     <div>
       <h2 style={{ fontSize: '32px', marginBottom: '8px' }}>Carica Documenti</h2>
       <p style={{ color: 'var(--text2)', marginBottom: '24px' }}>Formati supportati: {FORMATI}</p>
-
-      <div style={{ marginBottom: '24px' }}>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text2)' }}>
-          📁 Categoria / Archivio di appartenenza *
-        </label>
-        <input 
-          type="text" 
-          value={categoria} 
-          onChange={e => setCategoria(e.target.value)} 
-          list="categorie-list"
-          placeholder="es: Documenti Padre Mario, Lettere, Catechismo..."
-          style={{ width: '100%', maxWidth: '480px' }}
-          required
-        />
-        <datalist id="categorie-list">
-          {categorieEsistenti.map(c => (
-            <option key={c.nome} value={c.nome}>{c.nome} ({c.totale} documenti)</option>
-          ))}
-        </datalist>
-        <p style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '6px' }}>
-          ↳ Scrivi il nome di una categoria esistente (l'autocompletamento ti suggerisce) oppure digita una nuova per crearla.
-        </p>
-        {categorieEsistenti.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
-            {categorieEsistenti.map(c => (
-              <button key={c.nome} type="button" onClick={() => setCategoria(c.nome)}
-                style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '12px', border: '1px solid var(--border)', background: categoria === c.nome ? 'var(--gold)' : 'var(--bg3)', color: categoria === c.nome ? '#000' : 'var(--text)', cursor: 'pointer', transition: '0.2s' }}>
-                {c.nome}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Drop zone */}
       <div
@@ -106,21 +66,52 @@ export default function AdminUpload() {
 
       {/* File selezionati */}
       {files.length > 0 && (
-        <div className="card" style={{ marginBottom: '24px' }}>
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>File selezionati ({files.length})</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-            {files.map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', background: 'var(--bg3)', borderRadius: '6px' }}>
-                <File size={16} style={{ color: 'var(--gold)' }} />
-                <span style={{ fontSize: '14px', flex: 1 }}>{f.name}</span>
-                <span style={{ fontSize: '12px', color: 'var(--text3)' }}>{(f.size / 1024).toFixed(0)} KB</span>
-              </div>
-            ))}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', marginBottom: '24px', alignItems: 'start' }}>
+          <div className="card" style={{ marginBottom: 0 }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <File size={18} style={{ color: 'var(--gold)' }} />
+              File selezionati ({files.length})
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', maxHeight: '300px', overflowY: 'auto' }}>
+              {files.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', background: 'var(--bg3)', borderRadius: '6px' }}>
+                  <span style={{ fontSize: '13px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text3)', flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</span>
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary" onClick={carica} disabled={uploading}
+              style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', justifyContent: 'center', padding: '12px' }}>
+              {uploading ? <><span className="spinner" style={{ width: '18px', height: '18px' }} /> Caricamento in corso...</> : <><Upload size={18} /> Avvia Caricamento ed Indicizzazione</>}
+            </button>
           </div>
-          <button className="btn-primary" onClick={carica} disabled={uploading}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {uploading ? <><span className="spinner" style={{ width: '16px', height: '16px' }} /> Caricamento...</> : <><Upload size={16} /> Carica tutti</>}
-          </button>
+
+          <div className="card" style={{ border: '1px solid rgba(201,168,76,0.3)', background: 'rgba(201,168,76,0.05)' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--gold)', marginBottom: '16px' }}>
+              Stima Costi AI (Preventivo)
+            </h3>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '4px' }}>Token stimati (totali)</div>
+              <div style={{ fontSize: '24px', fontWeight: '600', fontFamily: 'Cormorant Garamond, serif' }}>
+                {Math.round(files.reduce((acc, f) => acc + (f.size / 4), 0)).toLocaleString('it')}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '4px' }}>Costo stimato indicizzazione</div>
+              <div style={{ fontSize: '24px', fontWeight: '700', color: '#4ade80' }}>
+                € {(files.reduce((acc, f) => acc + (f.size / 4), 0) / 1000000 * 0.10).toFixed(4)}
+              </div>
+            </div>
+
+            <div style={{ padding: '10px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px', fontSize: '11px', color: 'var(--text3)', lineHeight: '1.4' }}>
+              <p style={{ margin: '0 0 6px 0' }}><strong>Come viene calcolato:</strong></p>
+              • Basato sul modello <code>gte-Qwen2</code> (€0.10/M token).<br />
+              • Stima conservativa: 1 token ogni 4 byte di file.<br />
+              • Il costo reale può variare in base alla densità del testo nel PDF.
+            </div>
+          </div>
         </div>
       )}
 

@@ -9,6 +9,7 @@ import AdminUtenti from './pages/admin/AdminUtenti'
 import AdminUpload from './pages/admin/AdminUpload'
 import AdminAI from './pages/admin/AdminAI'
 import AdminStato from './pages/admin/AdminStato'
+import AdminConsumi from './pages/admin/AdminConsumi'
 import AdminLog from './pages/admin/AdminLog'
 import AdminBackup from './pages/admin/AdminBackup'
 import AdminScraper from './pages/admin/AdminScraper'
@@ -34,6 +35,7 @@ function AppRoutes() {
       <Route path="/admin/upload" element={<PrivateRoute adminOnly><AdminUpload /></PrivateRoute>} />
       <Route path="/admin/ai" element={<PrivateRoute adminOnly><AdminAI /></PrivateRoute>} />
       <Route path="/admin/stato" element={<PrivateRoute adminOnly><AdminStato /></PrivateRoute>} />
+      <Route path="/admin/consumi" element={<PrivateRoute adminOnly><AdminConsumi /></PrivateRoute>} />
       <Route path="/admin/log" element={<PrivateRoute adminOnly><AdminLog /></PrivateRoute>} />
       <Route path="/admin/backup" element={<PrivateRoute adminOnly><AdminBackup /></PrivateRoute>} />
       <Route path="/admin/scraper" element={<PrivateRoute adminOnly><AdminScraper /></PrivateRoute>} />
