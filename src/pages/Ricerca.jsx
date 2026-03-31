@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, FileText, Download, ExternalLink } from 'lucide-react'
+import { Search, FileText, Download, ExternalLink, CheckCircle, XCircle } from 'lucide-react'
 import Highlighter from 'react-highlight-words'
 import DocumentoModal from '../components/DocumentoModal'
 import api from '../api'
@@ -14,6 +14,9 @@ export default function Ricerca() {
   const [categorieDisponibili, setCategorieDisponibili] = useState([])
   const [selectedCats, setSelectedCats] = useState([])
   const [showFilters, setShowFilters] = useState(false)
+  const [suggerimento, setSuggerimento] = useState(null)   // testo corretto dall'AI
+  const [checkingSpell, setCheckingSpell] = useState(false)
+  const spellTimerRef = useRef(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -27,6 +30,39 @@ export default function Ricerca() {
       .catch(console.error)
   }, [])
 
+  // Debounce: controlla ortografia 1.5s dopo che l'utente smette di digitare
+  useEffect(() => {
+    setSuggerimento(null)
+    if (!domanda || domanda.trim().length < 5) return
+
+    if (spellTimerRef.current) clearTimeout(spellTimerRef.current)
+
+    spellTimerRef.current = setTimeout(async () => {
+      try {
+        setCheckingSpell(true)
+        const res = await api.post('/correggi', { testo: domanda })
+        if (res.data.modificato && res.data.corretto !== domanda) {
+          setSuggerimento(res.data.corretto)
+        }
+      } catch {
+        // Ignora errori silenziosamente (non blocca l'UX)
+      } finally {
+        setCheckingSpell(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(spellTimerRef.current)
+  }, [domanda])
+
+  const accettaSuggerimento = () => {
+    setDomanda(suggerimento)
+    setSuggerimento(null)
+  }
+
+  const ignoraSuggerimento = () => {
+    setSuggerimento(null)
+  }
+
   const toggleCategory = (nome) => {
     if (selectedCats.includes(nome)) setSelectedCats(selectedCats.filter(c => c !== nome))
     else setSelectedCats([...selectedCats, nome])
@@ -35,7 +71,7 @@ export default function Ricerca() {
   const cerca = async (e) => {
     e.preventDefault()
     if (!domanda.trim()) return
-    setError(''); setLoading(true); setRisultato(null)
+    setError(''); setLoading(true); setRisultato(null); setSuggerimento(null)
     try {
       const payload = { testo: domanda }
       if (selectedCats.length > 0) payload.categorie = selectedCats
@@ -142,26 +178,84 @@ export default function Ricerca() {
       </div>
 
       {/* Form ricerca */}
-      <form onSubmit={cerca} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
-          <input
+      <form onSubmit={cerca} style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: '14px', top: '18px', color: 'var(--text3)', pointerEvents: 'none' }} />
+          <textarea
             value={domanda}
             onChange={e => setDomanda(e.target.value)}
-            placeholder="Es: missioni in Peru, lettere di Kiko, documenti sul matrimonio..."
-            style={{ paddingLeft: '40px' }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); cerca(e) } }}
+            placeholder="Scrivi la tua domanda o parola chiave... (Invio per cercare, Shift+Invio per andare a capo)"
             disabled={loading}
+            rows={3}
+            spellCheck={true}
+            autoCorrect="on"
+            autoCapitalize="sentences"
+            lang="it"
+            style={{
+              paddingLeft: '40px',
+              paddingTop: '14px',
+              paddingBottom: '14px',
+              paddingRight: '16px',
+              width: '100%',
+              resize: 'vertical',
+              minHeight: '80px',
+              fontFamily: 'inherit',
+              fontSize: '15px',
+              boxSizing: 'border-box',
+              lineHeight: '1.6'
+            }}
           />
         </div>
-        <button type="submit" className="btn-primary" disabled={loading || !domanda.trim()}
-          style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {loading ? <span className="spinner" style={{ width: '16px', height: '16px' }} /> : <Search size={16} />}
-          {loading ? 'Ricerca...' : `Cerca ${selectedCats.length > 0 ? '(' + selectedCats.length + ')' : ''}`}
-        </button>
+
+        {/* Banner correttore ortografico AI */}
+        {checkingSpell && (
+          <div style={{ fontSize: '12px', color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '4px' }}>
+            <span className="spinner" style={{ width: '10px', height: '10px', flexShrink: 0 }} />
+            Verifica ortografia...
+          </div>
+        )}
+        {suggerimento && !checkingSpell && (
+          <div style={{
+            background: 'rgba(212, 175, 55, 0.08)',
+            border: '1px solid var(--gold)',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            fontSize: '14px'
+          }}>
+            <span style={{ color: 'var(--gold)', flexShrink: 0, marginTop: '1px' }}>✏️</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ color: 'var(--text2)' }}>Forse intendevi: </span>
+              <em style={{ color: 'var(--text)', fontStyle: 'normal', fontWeight: '600' }}>"{suggerimento}"</em>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+              <button type="button" onClick={accettaSuggerimento}
+                style={{ background: 'var(--gold)', color: '#000', border: 'none', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}>
+                Usa questo
+              </button>
+              <button type="button" onClick={ignoraSuggerimento}
+                style={{ background: 'none', color: 'var(--text3)', border: '1px solid var(--border)', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', cursor: 'pointer' }}>
+                Ignora
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="submit" className="btn-primary" disabled={loading || !domanda.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px' }}>
+            {loading ? <span className="spinner" style={{ width: '16px', height: '16px' }} /> : <Search size={16} />}
+            {loading ? 'Ricerca in corso...' : `Cerca ${selectedCats.length > 0 ? '(' + selectedCats.length + ' fonti)' : ''}`}
+          </button>
+        </div>
       </form>
 
       {/* Filtri Categoria */}
       {categorieDisponibili.length > 0 && (
+
         <div style={{ marginBottom: '32px' }}>
           <div style={{ fontSize: '13px', color: 'var(--gold)', marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Fonti di Ricerca Attive:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px', background: 'var(--bg2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
@@ -250,15 +344,14 @@ export default function Ricerca() {
                       >
                         <ExternalLink size={13} /> Vedi
                       </button>
-                      {fonte.file_originale && (
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
-                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <Download size={13} /> Originale
-                        </button>
-                      )}
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                        title="Scarica il file originale"
+                      >
+                        <Download size={13} /> Scarica originale
+                      </button>
                     </div>
                   </div>
                 ))}

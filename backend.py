@@ -279,6 +279,9 @@ class ModificaUtente(BaseModel):
     email: Optional[str] = None
     note: Optional[str] = None
 
+class TestoSemplice(BaseModel):
+    testo: str
+
 class ConfigAI(BaseModel):
     system_prompt: str
 
@@ -325,6 +328,32 @@ async def login(dati: LoginRequest, request: Request):
 @app.get("/auth/me")
 async def chi_sono(utente: dict = Depends(get_utente_corrente)):
     return {"username": utente["username"], "ruolo": utente["ruolo"]}
+
+
+# ════════════════════════════════════════════════════════
+# CORREZIONE ORTOGRAFICA AI
+# ════════════════════════════════════════════════════════
+
+@app.post("/correggi")
+async def correggi_testo(body: TestoSemplice, utente: dict = Depends(get_utente_corrente)):
+    testo = body.testo.strip()
+    if not testo or len(testo) < 4:
+        return {"corretto": testo, "modificato": False}
+    
+    risposta = chiama_llm([
+        {"role": "system", "content": (
+            "Sei un correttore ortografico e grammaticale. "
+            "Correggi SOLO gli errori di battitura, digitazione e ortografia nel testo che ti fornisco. "
+            "NON modificare il significato, NON aggiungere parole, NON togliere parole. "
+            "Restituisci SOLO il testo corretto, senza spiegazioni, senza virgolette, senza commenti. "
+            "Se il testo è già corretto, restituiscilo invariato. "
+            "Supporta italiano, inglese, spagnolo e latino."
+        )},
+        {"role": "user", "content": testo}
+    ], int(utente["sub"]))
+    
+    corretto = risposta.strip().strip('"').strip("'")
+    return {"corretto": corretto, "modificato": corretto.lower() != testo.lower()}
 
 
 # ════════════════════════════════════════════════════════
