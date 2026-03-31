@@ -352,15 +352,22 @@ export default function Ricerca() {
                       >
                         <ExternalLink size={13} /> Vedi
                       </button>
-                      <button
-                        className="btn-secondary btn-sm"
-                        onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                        title="Scarica il file originale"
-                      >
-                        <Download size={13} /> Scarica originale
-                      </button>
+                      {fonte.file_originale ? (
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => scaricaOriginale(fonte.id, fonte.nome)}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                          title="Scarica il file originale"
+                        >
+                          <Download size={13} /> Scarica originale
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: 'var(--text3)', fontStyle: 'italic', alignSelf: 'center' }}>
+                          Solo testo
+                        </span>
+                      )}
                     </div>
+
                   </div>
                 ))}
               </div>
