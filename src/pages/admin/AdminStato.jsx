@@ -39,7 +39,7 @@ export default function AdminStato() {
         </button>
       </div>
 
-      {loading ? <div style={{ textAlign: 'center', padding: '64px' }}><span className="spinner" style={{ width: '28px', height: '28px' }} /></div> : stato && (
+      {loading ? <div style={{ textAlign: 'center', padding: '64px' }}><span className="spinner" style={{ width: '28px', height: '28px' }} /></div> : (stato && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
           {/* Servizi */}
@@ -48,7 +48,7 @@ export default function AdminStato() {
               Servizi
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-              {Object.entries(stato.servizi).map(([nome, attivo]) => (
+              {Object.entries(stato?.servizi || {}).map(([nome, attivo]) => (
                 <div key={nome} className="card" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px' }}>
                   <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: attivo ? 'var(--green)' : 'var(--red)', flexShrink: 0 }} />
                   <div>
@@ -68,9 +68,9 @@ export default function AdminStato() {
               Database
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-              <StatCard label="Documenti" value={stato.database.documenti.toLocaleString('it')} icon={Database} />
-              <StatCard label="Utenti attivi" value={stato.database.utenti_attivi} icon={Server} />
-              <StatCard label="Ricerche oggi" value={stato.database.ricerche_oggi} icon={Search} />
+              <StatCard label="Documenti" value={(stato?.database?.documenti || 0).toLocaleString('it')} icon={Database} />
+              <StatCard label="Utenti attivi" value={stato?.database?.utenti_attivi || 0} icon={Server} />
+              <StatCard label="Ricerche oggi" value={stato?.database?.ricerche_oggi || 0} icon={Search} />
             </div>
           </div>
 
@@ -80,7 +80,7 @@ export default function AdminStato() {
             <h3 style={{ fontSize: '14px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: '12px' }}>
               Consumi AI (Regolo.ai)
             </h3>
-            {stato.consolidato_ai ? (
+            {stato?.consolidato_ai ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
                 <StatCard
                   label="Token Totali"
@@ -136,14 +136,14 @@ export default function AdminStato() {
             </h3>
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '14px' }}>
-                <span style={{ color: 'var(--text2)' }}>Usato: <strong style={{ color: 'var(--text)' }}>{stato.disco.usato_gb} GB</strong></span>
-                <span style={{ color: 'var(--text2)' }}>Libero: <strong style={{ color: 'var(--green)' }}>{stato.disco.libero_gb} GB</strong></span>
-                <span style={{ color: 'var(--text2)' }}>Totale: <strong style={{ color: 'var(--text)' }}>{stato.disco.totale_gb} GB</strong></span>
+                <span style={{ color: 'var(--text2)' }}>Usato: <strong style={{ color: 'var(--text)' }}>{stato?.disco?.usato_gb || 0} GB</strong></span>
+                <span style={{ color: 'var(--text2)' }}>Libero: <strong style={{ color: 'var(--green)' }}>{stato?.disco?.libero_gb || 0} GB</strong></span>
+                <span style={{ color: 'var(--text2)' }}>Totale: <strong style={{ color: 'var(--text)' }}>{stato?.disco?.totale_gb || 0} GB</strong></span>
               </div>
               <div style={{ height: '8px', background: 'var(--bg3)', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${stato.disco.percentuale}%`, background: stato.disco.percentuale > 80 ? 'var(--red)' : 'var(--gold)', borderRadius: '4px', transition: 'width 0.5s' }} />
+                <div style={{ height: '100%', width: `${stato?.disco?.percentuale || 0}%`, background: (stato?.disco?.percentuale || 0) > 80 ? 'var(--red)' : 'var(--gold)', borderRadius: '4px', transition: 'width 0.5s' }} />
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '6px', textAlign: 'right' }}>{stato.disco.percentuale}% utilizzato</div>
+              <div style={{ fontSize: '12px', color: 'var(--text3)', marginTop: '6px', textAlign: 'right' }}>{stato?.disco?.percentuale || 0}% utilizzato</div>
             </div>
           </div>
 
@@ -169,11 +169,16 @@ export default function AdminStato() {
                       api.post('/admin/ripara-libreria')
                         .then(r => {
                           setRepairResult(r.data)
-                          alert(`Riparazione completata: ${r.data.successi} documenti ripristinati su ${r.data.totale}`)
+                          const msg = r.data.messaggio || `Riparazione avviata per ${r.data.totale || ''} documenti.`
+                          alert(msg)
                           carica()
                         })
-                        .catch(e => alert("Errore durante la riparazione"))
-                        .finally(() => setLoadingRepair(false))
+                        .catch(e => alert("Errore durante l'avvio della riparazione"))
+                        .finally(() => {
+                           // Non resettiamo subito loadingRepair se lo consideriamo un processo lungo? 
+                           // In realtà qui ritorna subito perché è backgroundTask.
+                           setLoadingRepair(false)
+                        })
                     }
                   }}
                   disabled={loadingRepair}
@@ -183,13 +188,13 @@ export default function AdminStato() {
               </div>
               {repairResult && (
                 <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace', maxHeight: '150px', overflowY: 'auto' }}>
-                  {repairResult.log.map((line, i) => <div key={i}>{line}</div>)}
+                  {repairResult?.log?.map((line, i) => <div key={i}>{line}</div>)}
                 </div>
               )}
             </div>
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }

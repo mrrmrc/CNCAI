@@ -372,6 +372,7 @@ async def cerca(
     cur  = conn.cursor()
 
     # 0. Costruisce filtro categorie
+    # Se la lista è vuota o 'Tutte le fonti' è selezionato, cerchiamo su tutto (cat_where rimane vuoto)
     cat_where = ""
     cat_params = []
     if domanda.categorie and len(domanda.categorie) > 0:
@@ -791,8 +792,17 @@ def esegui_riparazione_background():
 
 @app.post("/admin/ripara-libreria")
 async def ripara_libreria(bt: BackgroundTasks, utente: dict = Depends(richiede_admin)):
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM documenti")
+    totale = cur.fetchone()[0]
+    cur.close()
+    conn.close()
     bt.add_task(esegui_riparazione_background)
-    return {"messaggio": "Riparazione della libreria avviata in background. Il processo continuerà senza bloccare il sito."}
+    return {
+        "messaggio": f"Riparazione avviata in background per {totale} documenti. Il processo continuerà senza bloccare il sito.",
+        "totale": totale
+    }
 
 @app.get("/admin/stato")
 async def stato_server(admin: dict = Depends(richiede_admin)):

@@ -293,8 +293,15 @@ export default function Ricerca() {
                 {cat.nome} <span style={{ fontSize: '10px', opacity: 0.7 }}>({cat.totale})</span>
               </label>
             ))}
+            {selectedCats.length > 0 && (
+              <button type="button" onClick={() => setSelectedCats([])} 
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px dashed var(--gold)', color: 'var(--gold)', fontSize: '12px', cursor: 'pointer', padding: '6px 12px', borderRadius: '16px', fontWeight: '600' }}>
+                ✕ Cerca ovunque (Tutte le Fonti)
+              </button>
+            )}
             {selectedCats.length < categorieDisponibili.length && (
-              <button type="button" onClick={() => setSelectedCats(categorieDisponibili.map(c => c.nome))} style={{ background: 'none', border: 'none', color: 'var(--gold)', fontSize: '12px', cursor: 'pointer', marginLeft: 'auto', alignSelf: 'center', textDecoration: 'underline' }}>
+              <button type="button" onClick={() => setSelectedCats(categorieDisponibili.map(c => c.nome))} 
+                style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: '12px', cursor: 'pointer', marginLeft: 'auto', alignSelf: 'center', textDecoration: 'underline' }}>
                 Seleziona Tutte
               </button>
             )}

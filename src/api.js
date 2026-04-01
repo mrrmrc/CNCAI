@@ -5,4 +5,19 @@ const api = axios.create({
   timeout: 60000,
 })
 
+// Interceptor per gestire errori globali (es. 401 Unauthorized)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('token')
+      delete api.defaults.headers.common['Authorization']
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default api
