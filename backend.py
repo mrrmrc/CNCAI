@@ -590,31 +590,33 @@ async def scarica_originale(
     if not Path(file_originale).exists():
         raise HTTPException(status_code=404, detail="File fisico non trovato sul server")
 
-    # 2. Logica MAGIC BYTES: analisi del contenuto reale del file
+    # 2. Logica MAGIC BYTES: analisi del contenuto reale del file e forzatura MIME Type
     nome_finale = Path(file_originale).name
+    mtype = "application/octet-stream"
     try:
         with open(file_originale, "rb") as f:
             header = f.read(16)
             ext_corretta = None
+            # Check Magic Bytes accurato
             if header.startswith(b"%PDF"):
-                ext_corretta = ".pdf"
-            elif header.startswith(b"I*") or header.startswith(b"II*"):
-                ext_corretta = ".tif"
+                ext_corretta, mtype = ".pdf", "application/pdf"
+            elif header.startswith(b"II\x2a\x00") or header.startswith(b"MM\x00\x2a") or header.startswith(b"II*"):
+                ext_corretta, mtype = ".tif", "image/tiff"
             elif header[:3] == b"\xff\xd8\xff":
-                ext_corretta = ".jpg"
+                ext_corretta, mtype = ".jpg", "image/jpeg"
             elif header.startswith(b"\x89PNG"):
-                ext_corretta = ".png"
+                ext_corretta, mtype = ".png", "image/png"
             
             if ext_corretta and not nome_finale.lower().endswith(ext_corretta):
                 nome_finale = Path(file_originale).stem + ext_corretta
-                print(f"DEBUG MAGIC: Corretto nome file in {nome_finale}")
     except Exception: pass
 
     return FileResponse(
         path=file_originale,
         filename=nome_finale,
-        media_type="application/octet-stream"
+        media_type=mtype
     )
+
 
         media_type="application/octet-stream"
     )
