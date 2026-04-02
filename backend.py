@@ -597,9 +597,6 @@ async def scarica_originale(
         media_type="application/octet-stream"
     )
 
-        media_type="application/octet-stream"
-    )
-
 
 # ════════════════════════════════════════════════════════
 # ADMIN — UTENTI
