@@ -1076,7 +1076,6 @@ class Scraper(BaseModel):
     profondita: int = 2
     max_pagine: int = 200
 
-@app.post("/admin/scraper")
 def esegui_scraper_background(dati: Scraper):
     global SCRAPER_STATUS
     url_base = dati.url.strip()
@@ -1118,11 +1117,20 @@ def esegui_scraper_background(dati: Scraper):
                     continue
                 
                 soup = BeautifulSoup(resp.text, "html.parser")
-                for tag in soup(["script","style","nav","footer","header"]):
+                # Pulizia Selettiva (meno aggressiva)
+                for tag in soup(["script","style","nav","footer","header","form","aside","iframe","noscript"]):
                     tag.decompose()
-                testo = soup.get_text(separator="\n", strip=True)
-                testo = "\n".join(l for l in testo.splitlines() if len(l.strip()) > 20)
-                if len(testo) < 100: continue
+                
+                # Prova ad isolare il contenuto principale
+                main_content = soup.find(['article', 'main', 'div.content', 'div.main'])
+                target = main_content if main_content else soup
+                
+                text = target.get_text(separator="\n", strip=True)
+                lines = [line.strip() for line in text.split("\n") if line.strip()]
+                # Riduciamo la soglia dei 20 caratteri per non perdere titoli e frasi brevi
+                testo = "\n".join(l for l in lines if len(l) > 5)
+                
+                if len(testo) < 50: continue
                 
                 title = soup.find("title")
                 nome_doc = (title.get_text().strip() if title else url_corrente)[:100] + ".txt"
