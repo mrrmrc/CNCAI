@@ -577,7 +577,7 @@ async def scarica_originale(
     if not file_originale:
         raise HTTPException(status_code=404, detail="File originale non registrato")
 
-    # Logica SMART per file OCR (.txt) -> serve l'originale (PDF/JPG/TIF)
+    # 1. Logica SMART per file OCR (.txt) -> cerca se esiste PDF/JPG/TIF con stesso nome
     path_obj = Path(file_originale)
     if path_obj.suffix.lower() == ".txt":
         estensioni_originali = [".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".docx", ".doc"]
@@ -585,15 +585,37 @@ async def scarica_originale(
             test_path = path_obj.with_suffix(ext)
             if test_path.exists():
                 file_originale = str(test_path)
-                print(f"DEBUG: Smart-matched {path_obj.name} -> {test_path.name}")
                 break
 
     if not Path(file_originale).exists():
         raise HTTPException(status_code=404, detail="File fisico non trovato sul server")
 
+    # 2. Logica MAGIC BYTES: analisi del contenuto reale del file
+    nome_finale = Path(file_originale).name
+    try:
+        with open(file_originale, "rb") as f:
+            header = f.read(16)
+            ext_corretta = None
+            if header.startswith(b"%PDF"):
+                ext_corretta = ".pdf"
+            elif header.startswith(b"I*") or header.startswith(b"II*"):
+                ext_corretta = ".tif"
+            elif header[:3] == b"\xff\xd8\xff":
+                ext_corretta = ".jpg"
+            elif header.startswith(b"\x89PNG"):
+                ext_corretta = ".png"
+            
+            if ext_corretta and not nome_finale.lower().endswith(ext_corretta):
+                nome_finale = Path(file_originale).stem + ext_corretta
+                print(f"DEBUG MAGIC: Corretto nome file in {nome_finale}")
+    except Exception: pass
+
     return FileResponse(
         path=file_originale,
-        filename=Path(file_originale).name,
+        filename=nome_finale,
+        media_type="application/octet-stream"
+    )
+
         media_type="application/octet-stream"
     )
 
