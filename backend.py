@@ -837,9 +837,84 @@ async def ripara_status(utente: dict = Depends(richiede_admin)):
     return REPAIR_STATUS
 
 
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+@app.get("/admin/stato")
+async def stato_server(admin: dict = Depends(richiede_admin)):
+    servizi = {}
+    
+    # 1. Verifica Postgresql
+    try:
+        conn_test = get_db()
+        conn_test.close()
+        servizi["postgresql"] = True
+    except Exception:
+        servizi["postgresql"] = False
+        
+    # 2. Verifica Nginx
+    try:
+        result = subprocess.run(["pgrep", "nginx"], capture_output=True, text=True)
+        servizi["nginx"] = result.returncode == 0
+        if not servizi["nginx"]:
+            result2 = subprocess.run(["systemctl", "is-active", "nginx"], capture_output=True, text=True)
+            servizi["nginx"] = result2.stdout.strip() == "active"
+    except Exception:
+        servizi["nginx"] = False
+        
+    servizi["docapp"] = True
 
-    # Breakdown per modello
+    # Statistiche DB
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM documenti")
+        tot_documenti = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM utenti WHERE attivo = TRUE")
+        tot_utenti = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) FROM log_accessi WHERE creato_il > NOW() - INTERVAL \'24 hours\'')
+        ricerche_oggi = cur.fetchone()[0]
+        
+        cur.execute("SELECT COALESCE(SUM(totale_tokens),0), COALESCE(SUM(costo_stimato),0) FROM consumi_ai")
+        row = cur.fetchone()
+        tot_tokens = int(row[0])
+        tot_costo = float(row[1])
+        
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Errore statistiche: {e}")
+        tot_documenti, tot_utenti, ricerche_oggi = 0, 0, 0
+        tot_tokens, tot_costo = 0, 0.0
+
+    # Spazio disco
+    try:
+        import shutil
+        disk = shutil.disk_usage("/")
+        disco = {
+            "totale_gb": round(disk.total / 1e9, 1),
+            "usato_gb": round(disk.used / 1e9, 1),
+            "libero_gb": round(disk.free / 1e9, 1),
+            "percentuale": round(disk.used / disk.total * 100, 1)
+        }
+    except Exception:
+        disco = {"totale_gb": 0, "usato_gb": 0, "libero_gb": 0, "percentuale": 0}
+
+    return {
+        "servizi": servizi,
+        "database": {
+            "documenti": tot_documenti,
+            "utenti_attivi": tot_utenti,
+            "ricerche_oggi": ricerche_oggi
+        },
+        "consolidato_ai": {
+            "totale_tokens": tot_tokens,
+            "costo_stimato": round(tot_costo, 2)
+        },
+        "disco": disco
+    }
+
+@app.get("/admin/consumi")
+async def get_ai_consumi(admin: dict = Depends(richiede_admin)):
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
             SELECT
@@ -856,11 +931,7 @@ async def ripara_status(utente: dict = Depends(richiede_admin)):
             ORDER BY costo_stimato DESC
         """)
         per_modello = [dict(r) for r in cur.fetchall()]
-    except Exception:
-        per_modello = []
-
-    # Ultime 50 operazioni con dettaglio
-    try:
+        
         cur.execute("""
             SELECT
                 c.id, u.username, c.modello,
@@ -872,11 +943,7 @@ async def ripara_status(utente: dict = Depends(richiede_admin)):
             LIMIT 50
         """)
         recenti = [dict(r) for r in cur.fetchall()]
-    except Exception:
-        recenti = []
-
-    # Totale generale
-    try:
+        
         cur.execute("""
             SELECT
                 COALESCE(SUM(totale_tokens),0) AS tot_tokens,
@@ -890,17 +957,19 @@ async def ripara_status(utente: dict = Depends(richiede_admin)):
             "costo":    float(row["tot_costo"]),
             "chiamate": int(row["tot_chiamate"])
         }
-    except Exception:
+    except Exception as e:
+        print(f"Errore consumi: {e}")
+        per_modello, recenti = [], []
         totale = {"token": 0, "costo": 0.0, "chiamate": 0}
-
-
-    cur.close()
-    conn.close()
+    finally:
+        cur.close()
+        conn.close()
+        
     return {
         "per_modello": per_modello,
         "recenti": recenti,
         "totale": totale,
-        "nota": "I dati mostrano i consumi tracciati localmente dal sistema. Per i dati storici completi visita dashboard.regolo.ai"
+        "nota": "I dati mostrano i consumi tracciati localmente dal sistema."
     }
 
 
