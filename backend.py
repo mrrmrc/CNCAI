@@ -574,12 +574,29 @@ async def scarica_originale(
         raise HTTPException(status_code=404, detail="Documento non trovato")
 
     file_originale = row[1]
-    if not file_originale or not Path(file_originale).exists():
-        raise HTTPException(status_code=404, detail="File originale non disponibile")
+    if not file_originale:
+        raise HTTPException(status_code=404, detail="File originale non registrato")
+
+    # Logica SMART per file OCR (.txt) -> serve l'originale (PDF/JPG/TIF)
+    path_obj = Path(file_originale)
+    if path_obj.suffix.lower() == ".txt":
+        estensioni_originali = [".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".docx", ".doc"]
+        for ext in estensioni_originali:
+            test_path = path_obj.with_suffix(ext)
+            if test_path.exists():
+                file_originale = str(test_path)
+                print(f"DEBUG: Smart-matched {path_obj.name} -> {test_path.name}")
+                break
+
+    if not Path(file_originale).exists():
+        raise HTTPException(status_code=404, detail="File fisico non trovato sul server")
 
     return FileResponse(
         path=file_originale,
         filename=Path(file_originale).name,
+        media_type="application/octet-stream"
+    )
+
         media_type="application/octet-stream"
     )
 
