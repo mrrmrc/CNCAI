@@ -59,7 +59,7 @@ async def init_db():
         conn.close()
     except Exception as e:
         print(f"[startup] Errore init consumi_ai: {e}")
-
+REGOLO_API_KEY = "sk-zWOHzCbqQtP20Gcc5DDKAA"
 DB_CONFIG = {
     "host": "localhost",
     "database": "docdb",
@@ -101,6 +101,14 @@ RATE_WINDOW = 60
 rate_data   = defaultdict(list)
 
 client = OpenAI(api_key=REGOLO_API_KEY, base_url="https://api.regolo.ai/v1")
+
+# Stato riparazione globale
+REPAIR_STATUS = {
+    "attivo": False,
+    "totale": 0,
+    "corrente": 0,
+    "ultimo_file": ""
+}
 
 
 # ════════════════════════════════════════════════════════
@@ -746,35 +754,36 @@ async def get_log(
     conn.close()
     return [dict(l) for l in logs]
 
+REPAIR_STATUS = {"attivo": False, "totale": 0, "corrente": 0, "ultimo_file": ""}
 
-# ════════════════════════════════════════════════════════
-# ADMIN — STATO SERVER
-# ════════════════════════════════════════════════════════
 
 def esegui_riparazione_background():
-    """Funzione che rigenera l'indice in sottofondo per non bloccare il sito."""
+    """Rigenera l'indice in sottofondo senza bloccare il sito."""
     conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("SELECT id, nome_file, file_originale FROM documenti")
         docs = cur.fetchall()
-        
+        REPAIR_STATUS["totale"]   = len(docs)
+        REPAIR_STATUS["corrente"] = 0
+
         for d in docs:
             doc_id = d["id"]
             nome   = d["nome_file"]
-            percorso = Path(d["file_originale"])
-            
-            if not percorso.exists():
+            REPAIR_STATUS["ultimo_file"] = nome
+            REPAIR_STATUS["corrente"] += 1
+
+            percorso = Path(d["file_originale"]) if d["file_originale"] else None
+            if percorso is None or not percorso.exists():
                 percorso = ORIGINALI_DIR / nome
-                
+
             if percorso.exists():
                 try:
                     testo_completo = estrai_testo(percorso)
-                    if not testo_completo: continue
-                    
+                    if not testo_completo:
+                        continue
                     cur.execute("UPDATE documenti SET testo = %s WHERE id = %s", (testo_completo, doc_id))
                     cur.execute("DELETE FROM embeddings WHERE documento_id = %s", (doc_id,))
-                    
                     chunks = chunk_testo(testo_completo)
                     for chunk in chunks:
                         emb = get_embedding(chunk)
@@ -782,88 +791,52 @@ def esegui_riparazione_background():
                             "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
                             (doc_id, chunk[:1000], emb)
                         )
-                    # Piccola pausa per non saturare la CPU
-                    time.sleep(0.2)
+                    conn.commit()
+                    time.sleep(0.1)
                 except Exception as e:
                     print(f"Errore riparazione {nome}: {e}")
+                    conn.rollback()
     finally:
-        cur.close()
-        conn.close()
+        REPAIR_STATUS["attivo"] = False
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 
-@app.post("/admin/ripara-libreria")
-async def ripara_libreria(bt: BackgroundTasks, utente: dict = Depends(richiede_admin)):
+
+@app.post("/admin/ripara")
+async def avvia_riparazione(
+    bt: BackgroundTasks,
+    admin: dict = Depends(richiede_admin)
+):
+    if REPAIR_STATUS.get("attivo"):
+        raise HTTPException(status_code=409, detail="Riparazione gia' in corso")
+
     conn = get_db()
     cur  = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM documenti")
     totale = cur.fetchone()[0]
     cur.close()
     conn.close()
+
+    REPAIR_STATUS["attivo"]      = True
+    REPAIR_STATUS["totale"]      = totale
+    REPAIR_STATUS["corrente"]    = 0
+    REPAIR_STATUS["ultimo_file"] = "Avvio in corso..."
+
     bt.add_task(esegui_riparazione_background)
     return {
-        "messaggio": f"Riparazione avviata in background per {totale} documenti. Il processo continuerà senza bloccare il sito.",
+        "messaggio": f"Riparazione avviata per {totale} documenti.",
         "totale": totale
     }
 
-@app.get("/admin/stato")
-async def stato_server(admin: dict = Depends(richiede_admin)):
-    servizi = {}
-    for servizio in ["postgresql", "nginx", "docapp"]:
-        try:
-            result = subprocess.run(
-                ["systemctl", "is-active", servizio],
-                capture_output=True, text=True
-            )
-            servizi[servizio] = result.stdout.strip() == "active"
-        except Exception:
-            servizi[servizio] = False
 
-    # Statistiche DB + Consumi AI
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM documenti")
-    tot_documenti = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM utenti WHERE attivo = TRUE")
-    tot_utenti = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM log_accessi WHERE creato_il > NOW() - INTERVAL '24 hours'")
-    ricerche_oggi = cur.fetchone()[0]
-    # Consumi AI dalla tabella consumi_ai
-    try:
-        cur.execute("SELECT COALESCE(SUM(totale_tokens),0), COALESCE(SUM(costo_stimato),0) FROM consumi_ai")
-        row_ai = cur.fetchone()
-        tot_tokens = int(row_ai[0])
-        tot_costo  = float(row_ai[1])
-    except Exception:
-        tot_tokens, tot_costo = 0, 0.0
-    cur.close()
-    conn.close()
-
-    # Spazio disco
-    disk = shutil.disk_usage("/")
-
-    return {
-        "servizi": servizi,
-        "database": {
-            "documenti": tot_documenti,
-            "utenti_attivi": tot_utenti,
-            "ricerche_oggi": ricerche_oggi
-        },
-        "consolidato_ai": {
-            "totale_tokens": tot_tokens,
-            "costo_stimato": round(tot_costo, 4)
-        },
-        "disco": {
-            "totale_gb": round(disk.total / 1e9, 1),
-            "usato_gb": round(disk.used / 1e9, 1),
-            "libero_gb": round(disk.free / 1e9, 1),
-            "percentuale": round(disk.used / disk.total * 100, 1)
-        }
-    }
+@app.get("/admin/ripara-status")
+async def ripara_status(utente: dict = Depends(richiede_admin)):
+    return REPAIR_STATUS
 
 
-@app.get("/admin/consumi")
-async def get_consumi(admin: dict = Depends(richiede_admin)):
-    """Riepiloga i consumi AI per modello + ultime operazioni recenti"""
-    conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Breakdown per modello
