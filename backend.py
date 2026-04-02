@@ -1307,3 +1307,56 @@ async def elimina_documento(doc_id: int, admin: dict = Depends(richiede_admin)):
 
 
 # ════════════════════════════════════════════════════════
+
+# ════════════════════════════════════════════════════════
+# ENDPOINT TEMPORANEO DI SINCRONIZZAZIONE DISCO
+# ════════════════════════════════════════════════════════
+
+@app.post("/admin/sincronizza-disco-attiva")
+async def sincronizza_disco_attiva():
+    """Sincronizza i file su disco con il DB senza creare doppioni"""
+    conn = get_db()
+    cur  = conn.cursor()
+    
+    # 1. Recupero file già registrati
+    cur.execute("SELECT file_originale, nome_file FROM documenti")
+    db_data = cur.fetchall()
+    db_paths = {row[0] for row in db_data if row[0]}
+    db_names = {row[1] for row in db_data if row[1]}
+    
+    missing_files = []
+    for f in ORIGINALI_DIR.iterdir():
+        if f.is_file():
+            full_path = str(f.absolute())
+            if full_path not in db_paths and f.name not in db_names:
+                missing_files.append(f)
+    
+    aggiunti = 0
+    errori = 0
+    for f in missing_files:
+        try:
+            testo = estrai_testo(f)
+            if testo:
+                cur.execute(
+                    "INSERT INTO documenti (nome_file, testo, file_originale) VALUES (%s, %s, %s) RETURNING id",
+                    (f.name, testo, str(f.absolute()))
+                )
+                doc_id = cur.fetchone()[0]
+                
+                chunks = chunk_testo(testo)
+                for chunk in chunks:
+                    emb = get_embedding(chunk)
+                    cur.execute(
+                        "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s, %s, %s)",
+                        (doc_id, chunk[:1000], emb)
+                    )
+                aggiunti += 1
+        except Exception as e:
+            print(f"Errore sincronizzazione {f.name}: {e}")
+            errori += 1
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"messaggio": f"Sincronizzazione completata. Aggiunti {aggiunti} nuovi file. Errori: {errori}"}
+
