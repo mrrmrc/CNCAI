@@ -1242,19 +1242,32 @@ async def rinomina_categoria(nome: str, payload: dict, admin: dict = Depends(ric
     return {"messaggio": f"Categoria rinominata in '{nuovo}'"}
 
 @app.delete("/admin/categorie/{nome}")
+@app.delete("/admin/categorie/{nome}")
 async def elimina_categoria(nome: str, admin: dict = Depends(richiede_admin)):
-    """Elimina tutti i documenti di una categoria e i relativi embedding"""
+    """Elimina tutti i documenti di una categoria e i relativi embedding e file fisici"""
     conn = get_db()
     cur  = conn.cursor()
+    
+    # 1. Recupero percorsi file fisici prima della cancellazione
+    cur.execute("SELECT file_originale FROM documenti WHERE categoria = %s", (nome,))
+    docs = cur.fetchall()
+    for doc in docs:
+        if doc[0]:
+            try: Path(doc[0]).unlink(missing_ok=True)
+            except Exception: pass
+    
+    # 2. Cancellazione dal Database (Embeddings e poi Documenti)
     cur.execute("""
         DELETE FROM embeddings
         WHERE documento_id IN (SELECT id FROM documenti WHERE categoria = %s)
     """, (nome,))
     cur.execute("DELETE FROM documenti WHERE categoria = %s", (nome,))
+    
     conn.commit()
     cur.close()
     conn.close()
-    return {"messaggio": f"Categoria '{nome}' eliminata"}
+    return {"messaggio": f"Categoria '{nome}' eliminata con i relativi file"}
+
 
 @app.delete("/admin/documenti/{doc_id}")
 async def elimina_documento(doc_id: int, admin: dict = Depends(richiede_admin)):
