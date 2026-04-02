@@ -4,6 +4,7 @@ import api from '../../api'
 
 export default function AdminScraper() {
   const [url, setUrl]               = useState('')
+  const [titolo, setTitolo]         = useState('')
   const [profondita, setProfondita] = useState(2)
   const [maxPagine, setMaxPagine]   = useState(200)
   const [loading, setLoading]       = useState(false)
@@ -12,7 +13,30 @@ export default function AdminScraper() {
   const [storico, setStorico]       = useState([])
   const [loadingStorico, setLoadingStorico] = useState(true)
 
+  const [scraperStatus, setScraperStatus] = useState({ attivo: false, pagine: 0, errori: 0, log: [], dominio: "" })
+
   useEffect(() => { caricaStorico() }, [])
+
+  // Polling avanzamento scraper
+  useEffect(() => {
+    let interval;
+    if (loading || scraperStatus.attivo) {
+      interval = setInterval(() => {
+        api.get('/admin/scraper-status')
+          .then(r => {
+            setScraperStatus(r.data)
+            setLogs(r.data.log || [])
+            if (!r.data.attivo && loading) {
+              setLoading(false)
+              setRisultato({ pagine_indicizzate: r.data.pagine, errori: r.data.errori, dominio: r.data.dominio })
+              caricaStorico()
+            }
+          })
+          .catch(() => {})
+      }, 2000)
+    }
+    return () => clearInterval(interval)
+  }, [loading, scraperStatus.attivo])
 
   const caricaStorico = () => {
     setLoadingStorico(true)
@@ -26,24 +50,22 @@ export default function AdminScraper() {
     e.preventDefault()
     if (!url.trim()) return
     setLoading(true)
-    setLogs([])
+    setLogs(["Inizializzazione..."])
     setRisultato(null)
 
     const urlNorm = url.trim().startsWith('http') ? url.trim() : `https://${url.trim()}`
 
     try {
-      const r = await api.post('/admin/scraper', {
+      await api.post('/admin/scraper', {
         url: urlNorm,
+        titolo: titolo.trim(),
         profondita: Number(profondita),
         max_pagine: Number(maxPagine),
       })
-      setRisultato(r.data)
-      setLogs(r.data.log || [])
-      caricaStorico()
+      // Il polling gestirà il resto
     } catch (err) {
       const msg = err.response?.data?.detail || err.message
       setLogs([`❌ Errore: ${msg}`])
-    } finally {
       setLoading(false)
     }
   }
@@ -67,6 +89,21 @@ export default function AdminScraper() {
       <div className="card" style={{ padding: '28px', marginBottom: '24px' }}>
         <form onSubmit={avviaScansione}>
           <div style={{ display: 'grid', gap: '20px' }}>
+
+            {/* TITOLO / CATEGORIA */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text2)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Titolo Raccolta / Categoria
+              </label>
+              <input
+                type="text"
+                value={titolo}
+                onChange={e => setTitolo(e.target.value)}
+                placeholder="Es: Catechesi 2024 (Opzionale)"
+                disabled={loading}
+                style={{ width: '100%', boxSizing: 'border-box', fontSize: '15px' }}
+              />
+            </div>
 
             {/* URL */}
             <div>

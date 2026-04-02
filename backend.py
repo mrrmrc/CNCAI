@@ -1072,6 +1072,7 @@ from urllib.parse import urljoin, urlparse
 
 class Scraper(BaseModel):
     url: str
+    titolo: Optional[str] = None
     profondita: int = 2
     max_pagine: int = 200
 
@@ -1088,6 +1089,9 @@ def esegui_scraper_background(dati: Scraper):
     SCRAPER_STATUS["errori"] = 0
     SCRAPER_STATUS["log"]    = ["Avvio scansione..."]
     SCRAPER_STATUS["dominio"] = dominio
+
+    # Usa il titolo fornito o il default
+    categoria_finale = dati.titolo.strip() if dati.titolo and dati.titolo.strip() else f"Web: {dominio}"
 
     visitati = set()
     da_visitare = [(url_base, 0)]
@@ -1125,7 +1129,7 @@ def esegui_scraper_background(dati: Scraper):
                 
                 cur.execute(
                     "INSERT INTO documenti (nome_file, testo, file_originale, categoria) VALUES (%s,%s,%s,%s) RETURNING id",
-                    (nome_doc, testo, url_corrente, f"Web: {dominio}")
+                    (nome_doc, testo, url_corrente, categoria_finale)
                 )
                 doc_id = cur.fetchone()[0]
                 
