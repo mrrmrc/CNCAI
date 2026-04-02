@@ -502,44 +502,11 @@ async def lista_documenti(
     pagina: int = 1,
     per_pagina: int = 50,
     cerca: str = None,
+    categoria: str = None,
     utente: dict = Depends(get_utente_corrente)
 ):
-    offset = (pagina - 1) * per_pagina
-    conn   = get_db()
-    cur    = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    if cerca:
-        cur.execute("""
-            SELECT id, nome_file, file_originale, creato_il,
-                   LEFT(testo, 200) AS anteprima
-            FROM documenti
-            WHERE testo ILIKE %s OR nome_file ILIKE %s
-            ORDER BY nome_file
-            LIMIT %s OFFSET %s
-        """, (f"%{cerca}%", f"%{cerca}%", per_pagina, offset))
-    else:
-        cur.execute("""
-            SELECT id, nome_file, file_originale, creato_il,
-                   LEFT(testo, 200) AS anteprima
-            FROM documenti
-            ORDER BY nome_file
-            LIMIT %s OFFSET %s
-        """, (per_pagina, offset))
-
-    documenti = cur.fetchall()
-
-    cur.execute("SELECT COUNT(*) FROM documenti")
-    totale = cur.fetchone()["count"]
-
-    cur.close()
-    conn.close()
-
-    return {
-        "documenti": [dict(d) for d in documenti],
-        "totale": totale,
-        "pagina": pagina,
-        "pagine": (totale + per_pagina - 1) // per_pagina
-    }
+    # Deleghiamo alla logica unificata di /libreria
+    return await libreria(pagina, per_pagina, cerca, categoria, utente)
 
 @app.get("/documento/{doc_id}")
 async def get_documento(
@@ -1089,8 +1056,10 @@ def esegui_scraper_background(dati: Scraper):
     SCRAPER_STATUS["log"]    = ["Avvio scansione..."]
     SCRAPER_STATUS["dominio"] = dominio
 
-    # Usa il titolo fornito o il default
-    categoria_finale = dati.titolo.strip() if dati.titolo and dati.titolo.strip() else f"Web: {dominio}"
+    # Usa il titolo fornito o il default (forzando il nome scelto dall'utente)
+    categoria_finale = dati.titolo.strip() if (dati.titolo and dati.titolo.strip()) else f"Web: {dominio}"
+    
+    SCRAPER_STATUS["log"].append(f"Categoria di destinazione: {categoria_finale}")
 
     visitati = set()
     da_visitare = [(url_base, 0)]
