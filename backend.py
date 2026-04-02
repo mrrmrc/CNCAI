@@ -104,6 +104,7 @@ client = OpenAI(api_key=REGOLO_API_KEY, base_url="https://api.regolo.ai/v1")
 
 # Stato riparazione globale
 REPAIR_STATUS = {
+SCRAPER_STATUS = {"attivo": False, "pagine": 0, "errori": 0, "log": [], "dominio": ""}
     "attivo": False,
     "totale": 0,
     "corrente": 0,
@@ -1041,83 +1042,105 @@ class Scraper(BaseModel):
     max_pagine: int = 200
 
 @app.post("/admin/scraper")
-async def avvia_scraper(dati: Scraper, admin: dict = Depends(richiede_admin)):
+def esegui_scraper_background(dati: Scraper):
+    global SCRAPER_STATUS
     url_base = dati.url.strip()
     if not url_base.startswith("http"):
         url_base = "https://" + url_base
     dominio = urlparse(url_base).netloc
+    
+    SCRAPER_STATUS["attivo"] = True
+    SCRAPER_STATUS["pagine"] = 0
+    SCRAPER_STATUS["errori"] = 0
+    SCRAPER_STATUS["log"]    = ["Avvio scansione..."]
+    SCRAPER_STATUS["dominio"] = dominio
+
     visitati = set()
     da_visitare = [(url_base, 0)]
     pagine_indicizzate = 0
     errori = 0
-    log = []
     headers = {"User-Agent": "Mozilla/5.0 (compatible; CNCAI-Scraper/1.0)"}
-    conn = get_db()
-    cur  = conn.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS siti_scraper (
-        id SERIAL PRIMARY KEY, url TEXT, dominio TEXT,
-        pagine_indicizzate INTEGER DEFAULT 0,
-        ultimo_scraping TIMESTAMP DEFAULT NOW())""")
-    while da_visitare and pagine_indicizzate < dati.max_pagine:
-        url_corrente, livello = da_visitare.pop(0)
-        if url_corrente in visitati or livello > dati.profondita:
-            continue
-        visitati.add(url_corrente)
-        try:
-            resp = req_lib.get(url_corrente, headers=headers, timeout=10)
-            if resp.status_code != 200:
+    
+    try:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS siti_scraper (
+            id SERIAL PRIMARY KEY, url TEXT, dominio TEXT,
+            pagine_indicizzate INTEGER DEFAULT 0,
+            ultimo_scraping TIMESTAMP DEFAULT NOW())""")
+        
+        while da_visitare and pagine_indicizzate < dati.max_pagine:
+            url_corrente, livello = da_visitare.pop(0)
+            if url_corrente in visitati or livello > dati.profondita:
                 continue
-            if "text/html" not in resp.headers.get("content-type", ""):
-                continue
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for tag in soup(["script","style","nav","footer","header"]):
-                tag.decompose()
-            testo = soup.get_text(separator="\n", strip=True)
-            testo = "\n".join(l for l in testo.splitlines() if len(l.strip()) > 20)
-            if len(testo) < 100:
-                continue
-            title = soup.find("title")
-            nome_doc = (title.get_text().strip() if title else url_corrente)[:100] + ".txt"
-            
-            cur.execute(
-                "INSERT INTO documenti (nome_file, testo, file_originale, categoria) VALUES (%s,%s,%s,%s) RETURNING id",
-                (nome_doc, testo, url_corrente, f"Web: {dominio}")
-            )
-            doc_id = cur.fetchone()[0]
-            
-            # Indicizzazione a chunks anche per lo scraper
-            chunks = chunk_testo(testo)
-            for chunk in chunks:
-                embedding = get_embedding(chunk)
+            visitati.add(url_corrente)
+            try:
+                resp = req_lib.get(url_corrente, headers=headers, timeout=10)
+                if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", ""):
+                    continue
+                
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for tag in soup(["script","style","nav","footer","header"]):
+                    tag.decompose()
+                testo = soup.get_text(separator="\n", strip=True)
+                testo = "\n".join(l for l in testo.splitlines() if len(l.strip()) > 20)
+                if len(testo) < 100: continue
+                
+                title = soup.find("title")
+                nome_doc = (title.get_text().strip() if title else url_corrente)[:100] + ".txt"
+                
                 cur.execute(
-                    "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s,%s,%s)",
-                    (doc_id, chunk[:1000], embedding)
+                    "INSERT INTO documenti (nome_file, testo, file_originale, categoria) VALUES (%s,%s,%s,%s) RETURNING id",
+                    (nome_doc, testo, url_corrente, f"Web: {dominio}")
                 )
-            
-            pagine_indicizzate += 1
-            log.append(f"OK [{pagine_indicizzate}] {nome_doc}")
-            if livello < dati.profondita:
-                for a in soup.find_all("a", href=True):
-                    link = urljoin(url_corrente, a["href"])
-                    parsed = urlparse(link)
-                    if parsed.netloc == dominio and link not in visitati:
-                        if not any(ext in link for ext in [".pdf",".jpg",".png",".zip",".mp4"]):
-                            da_visitare.append((link, livello + 1))
-        except Exception as e:
-            errori += 1
-            log.append(f"ERR: {url_corrente[:50]} - {str(e)[:40]}")
-    cur.execute(
-        "INSERT INTO siti_scraper (url, dominio, pagine_indicizzate) VALUES (%s,%s,%s)",
-        (url_base, dominio, pagine_indicizzate)
-    )
-    cur.close()
-    conn.close()
-    return {
-        "pagine_indicizzate": pagine_indicizzate,
-        "errori": errori,
-        "dominio": dominio,
-        "log": log[-50:]
-    }
+                doc_id = cur.fetchone()[0]
+                
+                chunks = chunk_testo(testo)
+                for chunk in chunks:
+                    embedding = get_embedding(chunk)
+                    cur.execute(
+                        "INSERT INTO embeddings (documento_id, chunk_testo, embedding) VALUES (%s,%s,%s)",
+                        (doc_id, chunk[:1000], embedding)
+                    )
+                conn.commit()
+                pagine_indicizzate += 1
+                SCRAPER_STATUS["pagine"] = pagine_indicizzate
+                SCRAPER_STATUS["log"].append(f"OK [{pagine_indicizzate}] {nome_doc}")
+                
+                if livello < dati.profondita:
+                    for a in soup.find_all("a", href=True):
+                        link = urljoin(url_corrente, a["href"])
+                        parsed = urlparse(link)
+                        if parsed.netloc == dominio and link not in visitati:
+                            if not any(ext in link for ext in [".pdf",".jpg",".png",".zip",".mp4"]):
+                                da_visitare.append((link, livello + 1))
+            except Exception as e:
+                errori += 1
+                SCRAPER_STATUS["errori"] = errori
+                SCRAPER_STATUS["log"].append(f"ERR: {url_corrente[:50]} - {str(e)[:40]}")
+        
+        cur.execute(
+            "INSERT INTO siti_scraper (url, dominio, pagine_indicizzate) VALUES (%s,%s,%s)",
+            (url_base, dominio, pagine_indicizzate)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        SCRAPER_STATUS["log"].append(f"CRITICAL ERR: {str(e)}")
+    finally:
+        SCRAPER_STATUS["attivo"] = False
+
+@app.post("/admin/scraper")
+async def avvia_scraper(dati: Scraper, bt: BackgroundTasks, admin: dict = Depends(richiede_admin)):
+    if SCRAPER_STATUS["attivo"]:
+        raise HTTPException(status_code=409, detail="Scraper gia' in funzione")
+    bt.add_task(esegui_scraper_background, dati)
+    return {"messaggio": "Scraper avviato in sottofondo"}
+
+@app.get("/admin/scraper-status")
+async def get_scraper_status(admin: dict = Depends(richiede_admin)):
+    return SCRAPER_STATUS
 
 @app.get("/admin/scraper")
 async def lista_siti_scraper(admin: dict = Depends(richiede_admin)):
