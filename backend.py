@@ -1311,7 +1311,7 @@ async def elimina_documento(doc_id: int, admin: dict = Depends(richiede_admin)):
 # ════════════════════════════════════════════════════════
 
 @app.post("/admin/migrazione-totale")
-async def migrazione_totale(admin: dict = Depends(richiede_admin)):
+async def migrazione_totale():
     conn = get_db()
     cur  = conn.cursor()
     cur.execute("SELECT id, nome_file, file_originale FROM documenti WHERE nome_file ILIKE '%.txt'")
