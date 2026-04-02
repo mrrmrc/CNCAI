@@ -805,7 +805,7 @@ def esegui_riparazione_background():
             pass
 
 
-@app.post("/admin/ripara")
+@app.post("/admin/ripara-library")
 async def avvia_riparazione(
     bt: BackgroundTasks,
     admin: dict = Depends(richiede_admin)
@@ -849,13 +849,19 @@ async def stato_server(admin: dict = Depends(richiede_admin)):
     except Exception:
         servizi["postgresql"] = False
         
-    # 2. Verifica Nginx
+    # 2. Verifica Nginx (Controllo robusto)
     try:
-        result = subprocess.run(["pgrep", "nginx"], capture_output=True, text=True)
-        servizi["nginx"] = result.returncode == 0
+        # Proviamo prima systemctl
+        res = subprocess.run(["systemctl", "is-active", "nginx"], capture_output=True, text=True)
+        servizi["nginx"] = res.stdout.strip() == "active"
+        
+        # Se fallisce, proviamo la porta 80
         if not servizi["nginx"]:
-            result2 = subprocess.run(["systemctl", "is-active", "nginx"], capture_output=True, text=True)
-            servizi["nginx"] = result2.stdout.strip() == "active"
+            import socket
+            sock = socket.socket(socket.socket.AF_INET, socket.socket.SOCK_STREAM)
+            sock.settimeout(1)
+            servizi["nginx"] = (sock.connect_ex(("127.0.0.1", 80)) == 0)
+            sock.close()
     except Exception:
         servizi["nginx"] = False
         
