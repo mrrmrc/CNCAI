@@ -102,9 +102,9 @@ rate_data   = defaultdict(list)
 
 client = OpenAI(api_key=REGOLO_API_KEY, base_url="https://api.regolo.ai/v1")
 
+SCRAPER_STATUS = {"attivo": False, "pagine": 0, "errori": 0, "log": [], "dominio": ""}
 # Stato riparazione globale
 REPAIR_STATUS = {
-SCRAPER_STATUS = {"attivo": False, "pagine": 0, "errori": 0, "log": [], "dominio": ""}
     "attivo": False,
     "totale": 0,
     "corrente": 0,
